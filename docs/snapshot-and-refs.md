@@ -22,14 +22,43 @@ from that.
    `ignored` are always dropped from the rendered output, but their
    *children* are re-attached to the nearest kept ancestor so the tree
    doesn't lose entire branches just because an intermediate wrapper
-   node has no accessible role.
+   node has no accessible role. A few more removals happen
+   unconditionally (no flag needed, since none of them lose real
+   information): the `RootWebArea` root and `InlineTextBox` nodes
+   (Chrome's internal echo of its parent `StaticText`'s name) are
+   always dropped, and an unnamed `generic`/`none` node that doesn't
+   branch (0 or 1 children - a no-op wrapper `<div>` or an
+   empty/decorative leaf) is collapsed, re-attaching its child (if any)
+   the same way an ignored node's children are. `-c/--compact` layers
+   on top of this for anyone who wants to go further, dropping *any*
+   unnamed `generic`/`none` node regardless of child count.
 3. **Tag each kept, element-backed node.** For every node that survives
    filtering and maps to a real DOM Element, the CLI:
    - pushes its `backendDOMNodeId` to the frontend
      (`DOM.pushNodesByBackendIdsToFrontend`) to get a live `NodeId`, then
    - sets a `data-llmb-ref="eN"` attribute on it (`DOM.setAttributeValue`).
-4. **Render.** The walked tree prints as `@eN [role] "name"` lines (or
-   `--json` for structured output).
+4. **Render.** The walked tree prints as a YAML-style dash-list, one
+   node per line: `- role "name" [state=value, ref=eN, href="..."]`
+   (or `--json` for structured output), e.g.:
+
+   ```
+   - link "About" [ref=e1]
+   - button "Google apps" [expanded=false, ref=e19]
+   ```
+
+   The bracketed attrs are trailing and optional - omitted entirely
+   when a node has none. Refs (`ref=eN`) come from the tagging step
+   above; `href=` only appears with `-u/--urls`. A short allowlist of
+   ARIA state properties (`expanded`, `checked`, `pressed`, `selected`,
+   `disabled`, `required`, `readonly`, `level`) is also surfaced when
+   present on the node, ahead of `ref`/`href` in that fixed order -
+   see `_STATE_PROPS_ORDER` in `snapshot.py`. `expanded`/`checked`/
+   `pressed`/`selected`/`level` print at any value since they reflect a
+   widget's current toggle position either way; `disabled`/`required`/
+   `readonly` behave like HTML boolean attributes and only print when
+   `true` (an untoggled `required=false` on every input would just be
+   noise). Boolean values print lowercase (`expanded=false`, not
+   Python's `False`).
 
 Every other command's selector argument then just resolves `@eN` to the
 CSS selector `[data-llmb-ref="eN"]` and flows through the normal

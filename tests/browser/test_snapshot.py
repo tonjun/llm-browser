@@ -15,7 +15,15 @@ from unittest.mock import MagicMock
 from llm_browser.browser import snapshot as snap
 
 
-def _ax_node(node_id, role, name, backend_dom_node_id, ignored=False, child_ids=None):
+def _ax_node(
+    node_id,
+    role,
+    name,
+    backend_dom_node_id,
+    ignored=False,
+    child_ids=None,
+    properties=None,
+):
     return SimpleNamespace(
         node_id=node_id,
         role=SimpleNamespace(value=role) if role is not None else None,
@@ -23,6 +31,13 @@ def _ax_node(node_id, role, name, backend_dom_node_id, ignored=False, child_ids=
         backend_dom_node_id=backend_dom_node_id,
         ignored=ignored,
         child_ids=child_ids or [],
+        properties=properties,
+    )
+
+
+def _ax_property(name, value):
+    return SimpleNamespace(
+        name=SimpleNamespace(value=name), value=SimpleNamespace(value=value)
     )
 
 
@@ -38,6 +53,10 @@ class TestAxValueStr:
 
     def test_stringifies_non_string_value(self):
         assert snap._ax_value_str(SimpleNamespace(value=42)) == "42"
+
+    def test_lowercases_booleans(self):
+        assert snap._ax_value_str(SimpleNamespace(value=True)) == "true"
+        assert snap._ax_value_str(SimpleNamespace(value=False)) == "false"
 
 
 class TestBuildIndex:
@@ -67,6 +86,64 @@ class TestBuildIndex:
         nodes = [_ax_node(1, "generic", None, 100, child_ids=[2, 3])]
         index = snap._build_index(nodes)
         assert index["1"].child_ids == ["2", "3"]
+
+    def test_properties_filtered_to_allowlist_and_ordered(self):
+        nodes = [
+            _ax_node(
+                1,
+                "button",
+                "Go",
+                100,
+                properties=[
+                    _ax_property("focusable", True),  # not allowlisted
+                    _ax_property("pressed", "false"),
+                    _ax_property("expanded", "true"),
+                ],
+            )
+        ]
+        index = snap._build_index(nodes)
+        # Allowlist order (expanded before pressed), not CDP's order.
+        assert index["1"].properties == [("expanded", "true"), ("pressed", "false")]
+
+    def test_no_properties_is_empty_list(self):
+        nodes = [_ax_node(1, "button", "Go", 100)]
+        index = snap._build_index(nodes)
+        assert index["1"].properties == []
+
+    def test_always_shown_state_prop_kept_when_false(self):
+        nodes = [
+            _ax_node(
+                1, "button", "Go", 100, properties=[_ax_property("expanded", False)]
+            )
+        ]
+        index = snap._build_index(nodes)
+        assert index["1"].properties == [("expanded", "false")]
+
+    def test_attribute_like_state_prop_omitted_when_false(self):
+        nodes = [
+            _ax_node(
+                1,
+                "textbox",
+                "Search",
+                100,
+                properties=[
+                    _ax_property("required", False),
+                    _ax_property("disabled", False),
+                    _ax_property("readonly", False),
+                ],
+            )
+        ]
+        index = snap._build_index(nodes)
+        assert index["1"].properties == []
+
+    def test_attribute_like_state_prop_kept_when_true(self):
+        nodes = [
+            _ax_node(
+                1, "textbox", "Search", 100, properties=[_ax_property("required", True)]
+            )
+        ]
+        index = snap._build_index(nodes)
+        assert index["1"].properties == [("required", "true")]
 
 
 class TestFindRoot:
@@ -167,22 +244,88 @@ class TestFilterAndLevel:
         kept = snap._filter_and_level(pairs, interactive=False, compact=True)
         assert [n.ax_id for _, n in kept] == ["1"]
 
+    def test_root_web_area_always_dropped_child_reattaches(self):
+        pairs = [
+            (0, snap._SnapshotNode("1", "RootWebArea", "Page", 1, child_ids=["2"])),
+            (1, snap._SnapshotNode("2", "generic", "Body", 2)),
+        ]
+        kept = snap._filter_and_level(pairs, interactive=False, compact=False)
+        assert [(level, n.ax_id) for level, n in kept] == [(0, "2")]
+
+    def test_inline_text_box_always_dropped_even_when_named(self):
+        pairs = [
+            (0, snap._SnapshotNode("1", "StaticText", "Hi", 1, child_ids=["2"])),
+            (1, snap._SnapshotNode("2", "InlineTextBox", "Hi", 2)),
+        ]
+        kept = snap._filter_and_level(pairs, interactive=False, compact=False)
+        assert [n.ax_id for _, n in kept] == ["1"]
+
+    def test_single_child_unnamed_wrapper_collapses(self):
+        pairs = [
+            (0, snap._SnapshotNode("1", "generic", "", 1, child_ids=["2"])),
+            (1, snap._SnapshotNode("2", "button", "Go", 2)),
+        ]
+        kept = snap._filter_and_level(pairs, interactive=False, compact=False)
+        assert [(level, n.ax_id) for level, n in kept] == [(0, "2")]
+
+    def test_multi_child_unnamed_wrapper_kept(self):
+        pairs = [
+            (0, snap._SnapshotNode("1", "generic", "", 1, child_ids=["2", "3"])),
+            (1, snap._SnapshotNode("2", "link", "A", 2)),
+            (1, snap._SnapshotNode("3", "link", "B", 3)),
+        ]
+        kept = snap._filter_and_level(pairs, interactive=False, compact=False)
+        assert [(level, n.ax_id) for level, n in kept] == [(0, "1"), (1, "2"), (1, "3")]
+
+    def test_empty_unnamed_leaf_generic_dropped(self):
+        pairs = [
+            (0, snap._SnapshotNode("1", "generic", "", 1, child_ids=["2"])),
+            (1, snap._SnapshotNode("2", "generic", "", 2)),
+        ]
+        kept = snap._filter_and_level(pairs, interactive=False, compact=False)
+        assert kept == []
+
+    def test_empty_named_leaf_generic_kept(self):
+        pairs = [(0, snap._SnapshotNode("1", "generic", "Icon", 1))]
+        kept = snap._filter_and_level(pairs, interactive=False, compact=False)
+        assert [n.ax_id for _, n in kept] == ["1"]
+
+    def test_single_child_named_wrapper_kept(self):
+        pairs = [
+            (0, snap._SnapshotNode("1", "generic", "Label", 1, child_ids=["2"])),
+            (1, snap._SnapshotNode("2", "button", "Go", 2)),
+        ]
+        kept = snap._filter_and_level(pairs, interactive=False, compact=False)
+        assert [n.ax_id for _, n in kept] == ["1", "2"]
+
 
 class TestRender:
     def test_text_rendering_includes_ref_role_name_href(self):
         node = snap._SnapshotNode("1", "link", "Home", 1, ref="e1")
         out = snap._render([(0, node)], {"e1": "https://example.com"}, as_json=False)
-        assert out == '@e1 [link] "Home" href="https://example.com"'
+        assert out == '- link "Home" [ref=e1, href="https://example.com"]'
 
     def test_text_rendering_indents_by_level(self):
         node = snap._SnapshotNode("2", "button", "Go", 2, ref="e2")
         out = snap._render([(2, node)], {}, as_json=False)
-        assert out.startswith("    ")
+        assert out.startswith("    - ")
 
     def test_text_rendering_omits_missing_parts(self):
         node = snap._SnapshotNode("1", "generic", "", 1)
         out = snap._render([(0, node)], {}, as_json=False)
-        assert out == "[generic]"
+        assert out == "- generic"
+
+    def test_text_rendering_includes_state_properties_before_ref(self):
+        node = snap._SnapshotNode(
+            "1",
+            "button",
+            "Google apps",
+            1,
+            ref="e19",
+            properties=[("expanded", "false")],
+        )
+        out = snap._render([(0, node)], {}, as_json=False)
+        assert out == '- button "Google apps" [expanded=false, ref=e19]'
 
     def test_json_rendering(self):
         node = snap._SnapshotNode("1", "button", "Go", 1, ref="e1")
