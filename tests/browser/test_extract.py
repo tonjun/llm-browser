@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -51,3 +52,26 @@ def test_extract_falls_back_to_page_text(d, monkeypatch):
     d.get_beautiful_soup.return_value = soup
     result = extract.extract_content()
     assert result == "fallback text"
+
+
+class TestSaveMarkdown:
+    def test_explicit_path_writes_content(self, d, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            extract.trafilatura, "extract", lambda *a, **k: "# Title\n\nBody."
+        )
+        target = tmp_path / "out.md"
+        result = extract.save_markdown(str(target))
+        assert result == str(target)
+        assert target.read_text() == "# Title\n\nBody."
+
+    def test_no_path_generates_one_under_state_dir(self, d, monkeypatch):
+        monkeypatch.setattr(extract.trafilatura, "extract", lambda *a, **k: "content")
+        from llm_browser import session
+
+        result = extract.save_markdown()
+        try:
+            assert result.startswith(str(session.state_dir()))
+            assert result.endswith(".md")
+            assert Path(result).read_text() == "content"
+        finally:
+            Path(result).unlink(missing_ok=True)
