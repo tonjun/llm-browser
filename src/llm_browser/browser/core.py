@@ -20,6 +20,7 @@ import time
 from collections.abc import Callable
 from typing import TypeVar
 
+import requests
 from seleniumbase import sb_cdp
 from seleniumbase.core.sb_cdp import CDPMethods
 from seleniumbase.undetected.cdp_driver import cdp_util
@@ -101,6 +102,25 @@ def _ensure_daemon(headless: bool) -> session.SessionState:
         return _wait_for_daemon()
 
 
+def _ensure_target(state: session.SessionState) -> None:
+    """Make sure the daemon's Chrome has at least one open tab.
+
+    A user closing every browser window manually leaves the daemon
+    process and its CDP port alive (``is_daemon_alive`` only checks the
+    pid and the port, not tab count), but with zero targets. Both
+    ``sb_cdp.Chrome(...)`` (``open_url``) and ``cdp_util.start_sync``
+    (``_attach``) pick "the" tab by indexing into that target list -
+    ``main_tab``/``driver.tabs[-1]`` - so a Chrome with no tabs makes
+    them crash with an ``IndexError`` instead of just opening a new one.
+    Use the CDP HTTP endpoint to create a blank tab first when needed;
+    it works even with zero existing targets.
+    """
+    base = f"http://{state.host}:{state.port}"
+    targets = requests.get(f"{base}/json/list", timeout=5).json()
+    if not any(t.get("type") == "page" for t in targets):
+        requests.put(f"{base}/json/new", timeout=5)
+
+
 def open_url(url: str, headless: bool = False) -> None:
     """Open a URL in the persistent browser session, starting it if needed."""
     existing = session.is_daemon_alive(session.read_state())
@@ -108,6 +128,7 @@ def open_url(url: str, headless: bool = False) -> None:
     if existing and headless:
         print("Note: --headless is ignored; a session is already running.")
 
+    _ensure_target(state)
     driver = sb_cdp.Chrome(host=state.host, port=state.port)
     driver.get(url)
     driver.sleep(2)
@@ -170,6 +191,7 @@ def _attach() -> CDPMethods:
     state = session.read_state()
     if not session.is_daemon_alive(state):
         raise RuntimeError("No running session. Run `llm-browser open <url>` first.")
+    _ensure_target(state)
     loop = asyncio.new_event_loop()
     driver = cdp_util.start_sync(host=state.host, port=state.port, loop=loop)
     page = driver.tabs[-1]

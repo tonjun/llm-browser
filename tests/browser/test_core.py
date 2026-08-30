@@ -219,6 +219,57 @@ class TestEnsureDaemon:
 
 
 # --------------------------------------------------------------------------
+# _ensure_target
+# --------------------------------------------------------------------------
+
+
+class TestEnsureTarget:
+    def test_does_nothing_when_a_page_target_exists(self, monkeypatch):
+        state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
+        get = MagicMock(
+            return_value=MagicMock(json=lambda: [{"type": "page"}])
+        )
+        put = MagicMock()
+        monkeypatch.setattr(core.requests, "get", get)
+        monkeypatch.setattr(core.requests, "put", put)
+
+        core._ensure_target(state)
+
+        get.assert_called_once_with(
+            "http://127.0.0.1:9222/json/list", timeout=5
+        )
+        put.assert_not_called()
+
+    def test_creates_a_tab_when_no_page_targets(self, monkeypatch):
+        state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
+        get = MagicMock(
+            return_value=MagicMock(json=lambda: [{"type": "background_page"}])
+        )
+        put = MagicMock()
+        monkeypatch.setattr(core.requests, "get", get)
+        monkeypatch.setattr(core.requests, "put", put)
+
+        core._ensure_target(state)
+
+        put.assert_called_once_with(
+            "http://127.0.0.1:9222/json/new", timeout=5
+        )
+
+    def test_creates_a_tab_when_no_targets_at_all(self, monkeypatch):
+        state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
+        get = MagicMock(return_value=MagicMock(json=lambda: []))
+        put = MagicMock()
+        monkeypatch.setattr(core.requests, "get", get)
+        monkeypatch.setattr(core.requests, "put", put)
+
+        core._ensure_target(state)
+
+        put.assert_called_once_with(
+            "http://127.0.0.1:9222/json/new", timeout=5
+        )
+
+
+# --------------------------------------------------------------------------
 # open_url
 # --------------------------------------------------------------------------
 
@@ -229,6 +280,7 @@ class TestOpenUrl:
         monkeypatch.setattr(session, "read_state", lambda: state)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
         monkeypatch.setattr(core, "_ensure_daemon", lambda headless: state)
+        monkeypatch.setattr(core, "_ensure_target", MagicMock())
 
         driver = MagicMock()
         driver.get_title.return_value = "My Page"
@@ -250,6 +302,7 @@ class TestOpenUrl:
         monkeypatch.setattr(session, "read_state", lambda: state)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
         monkeypatch.setattr(core, "_ensure_daemon", lambda headless: state)
+        monkeypatch.setattr(core, "_ensure_target", MagicMock())
         driver = MagicMock()
         driver.get_title.return_value = "Title"
         monkeypatch.setattr(core.sb_cdp, "Chrome", MagicMock(return_value=driver))
@@ -266,6 +319,7 @@ class TestOpenUrl:
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
         monkeypatch.setattr(core, "_ensure_daemon", lambda headless: state)
+        monkeypatch.setattr(core, "_ensure_target", MagicMock())
         driver = MagicMock()
         driver.get_title.return_value = "Title"
         monkeypatch.setattr(core.sb_cdp, "Chrome", MagicMock(return_value=driver))
@@ -347,6 +401,7 @@ class TestAttach:
         state = session.SessionState(pid=1, host="h", port=1)
         monkeypatch.setattr(session, "read_state", lambda: state)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
+        monkeypatch.setattr(core, "_ensure_target", MagicMock())
 
         from unittest.mock import AsyncMock
 

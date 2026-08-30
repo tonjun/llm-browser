@@ -11,33 +11,28 @@ CDP mode. Its command surface is modeled on the `agent-browser` npm CLI
 (navigate → snapshot the page as an accessibility tree with stable
 `@eN` refs → act on those refs), but it's a separate implementation
 with a smaller surface and some real differences — don't assume an
-`agent-browser` flag exists here just because it sounds familiar. When
-in doubt, check [`docs/commands.md`](docs/commands.md), the
-source of truth for every command and flag.
+`agent-browser` flag exists here just because it sounds familiar.
 
-All commands below are invoked as `uv run llm-browser <command>` from
-the repo root. If `llm-browser` is installed globally instead (`uv tool
-install .` / `pipx install .`), drop the `uv run` prefix and invoke it
-directly as `llm-browser <command>`.
+All commands below assume `llm-browser` is on PATH (`uv tool install .`
+/ `pipx install .`). If you're working from a repo clone without a
+global install, prefix each command with `uv run` instead (`uv run
+llm-browser <command>`).
 
 ## The core loop
 
 ```bash
-uv run llm-browser open https://example.com
-uv run llm-browser snapshot -i              # interactive elements only, with @eN refs
-uv run llm-browser click @e1                # act on a ref from the snapshot
-uv run llm-browser fill @e2 "hello@example.com"
-uv run llm-browser get text @e3
-uv run llm-browser close
+llm-browser open https://example.com
+llm-browser snapshot -i              # interactive elements only, with @eN refs
+llm-browser click @e1                # act on a ref from the snapshot
+llm-browser fill @e2 "hello@example.com"
+llm-browser get text @e3
+llm-browser close
 ```
 
 **Refs go stale on navigation or re-render.** `@e1`, `@e2`, ... are
 assigned fresh on every `snapshot` call. After any page-changing
 action (a click that navigates, a form submit, an SPA re-render),
 re-snapshot before using a ref again — a stale ref just won't resolve.
-See [`docs/snapshot-and-refs.md`](docs/snapshot-and-refs.md) for
-the full model (how refs are tagged, why cross-origin iframes aren't
-inlined, etc.).
 
 Every selector argument accepts either a plain CSS selector or an
 `@eN` ref — there's no separate ref-resolution path to think about.
@@ -53,9 +48,9 @@ session.
 
 - `--headless` only matters on the *first* `open` that spawns the
   daemon. If a session is already running, a later `--headless` is
-  silently ignored (with a printed note) — run `uv run llm-browser
-  close` first if you need to switch modes.
-- `uv run llm-browser close` shuts the daemon (and Chrome) down.
+  silently ignored (with a printed note) — run `llm-browser close`
+  first if you need to switch modes.
+- `llm-browser close` shuts the daemon (and Chrome) down.
   Always close when a task is finished so a background Chrome instance
   doesn't linger.
 - **There is no `--session <name>` multi-session isolation** like
@@ -63,35 +58,32 @@ session.
   try to pass a session flag or run two isolated browser contexts side
   by side.
 
-Full detail (state layout under `~/.llm-browser/`, crash recovery,
-race handling): [`docs/persistent-sessions.md`](docs/persistent-sessions.md).
-
 ## Reading a page
 
 ```bash
-uv run llm-browser snapshot                    # full accessibility tree
-uv run llm-browser snapshot -i                 # interactive elements only (preferred)
-uv run llm-browser snapshot -c                 # compact (drop empty structural nodes)
-uv run llm-browser snapshot -d 3                # cap depth at 3 levels
-uv run llm-browser snapshot -s "#main"          # scope to a CSS selector
-uv run llm-browser snapshot -u                  # include href urls on links
-uv run llm-browser snapshot -i --json           # machine-readable output
+llm-browser snapshot                    # full accessibility tree
+llm-browser snapshot -i                 # interactive elements only (preferred)
+llm-browser snapshot -c                 # compact (drop empty structural nodes)
+llm-browser snapshot -d 3                # cap depth at 3 levels
+llm-browser snapshot -s "#main"          # scope to a CSS selector
+llm-browser snapshot -u                  # include href urls on links
+llm-browser snapshot -i --json           # machine-readable output
 ```
 
 ```bash
-uv run llm-browser get text @e1        # visible text
-uv run llm-browser get html @e1        # innerHTML
-uv run llm-browser get value @e1       # input value
-uv run llm-browser get attr @e1 href   # any attribute
-uv run llm-browser get title           # page title
-uv run llm-browser get url             # current URL
-uv run llm-browser get count ".item"   # count of matching elements
-uv run llm-browser get box @e1         # bounding box
-uv run llm-browser get styles @e1      # computed styles (all, or --prop name)
-uv run llm-browser get cdp-url         # CDP WebSocket URL
+llm-browser get text @e1        # visible text
+llm-browser get html @e1        # innerHTML
+llm-browser get value @e1       # input value
+llm-browser get attr @e1 href   # any attribute
+llm-browser get title           # page title
+llm-browser get url             # current URL
+llm-browser get count ".item"   # count of matching elements
+llm-browser get box @e1         # bounding box
+llm-browser get styles @e1      # computed styles (all, or --prop name)
+llm-browser get cdp-url         # CDP WebSocket URL
 
-uv run llm-browser read                # read the *currently open* page as plain text
-uv run llm-browser read <url>          # fetch a URL directly, no browser tab (--markdown for Markdown)
+llm-browser read                # read the *currently open* page as plain text
+llm-browser read <url>          # fetch a URL directly, no browser tab (--markdown for Markdown)
 ```
 
 `read` with no argument (or a CSS selector) reads whatever page is
@@ -103,21 +95,21 @@ in spirit to agent-browser's `read <url>`, though without its
 ## Interacting
 
 ```bash
-uv run llm-browser click @e1                 # click
-uv run llm-browser click --text "Sign In"    # click the first element matching this text
-uv run llm-browser dblclick @e1              # double-click
-uv run llm-browser hover @e1                 # hover
-uv run llm-browser focus @e1                 # focus
-uv run llm-browser fill @e2 "hello"          # clear then type
-uv run llm-browser type @e2 " world"         # type without clearing
-uv run llm-browser press Enter               # press a key (default target: :focus)
-uv run llm-browser check @e3                 # check a checkbox
-uv run llm-browser uncheck @e3               # uncheck
-uv run llm-browser select @e4 value1 value2  # select one or more dropdown options by value
-uv run llm-browser upload @e5 file1.pdf      # upload file(s) to a file input
-uv run llm-browser scroll down 500           # up | down | left | right | top | bottom
-uv run llm-browser scrollintoview @e1        # scroll an element into view
-uv run llm-browser drag @e1 @e2              # drag and drop
+llm-browser click @e1                 # click
+llm-browser click --text "Sign In"    # click the first element matching this text
+llm-browser dblclick @e1              # double-click
+llm-browser hover @e1                 # hover
+llm-browser focus @e1                 # focus
+llm-browser fill @e2 "hello"          # clear then type
+llm-browser type @e2 " world"         # type without clearing
+llm-browser press Enter               # press a key (default target: :focus)
+llm-browser check @e3                 # check a checkbox
+llm-browser uncheck @e3               # uncheck
+llm-browser select @e4 value1 value2  # select one or more dropdown options by value
+llm-browser upload @e5 file1.pdf      # upload file(s) to a file input
+llm-browser scroll down 500           # up | down | left | right | top | bottom
+llm-browser scrollintoview @e1        # scroll an element into view
+llm-browser drag @e1 @e2              # drag and drop
 ```
 
 **No semantic-locator system.** agent-browser's `find role/text/label/
@@ -134,12 +126,12 @@ daemon's auto-started Xvfb on Linux).
 ## Waiting
 
 ```bash
-uv run llm-browser wait @e1                  # wait for an element
-uv run llm-browser wait --ms 2000            # dumb wait, milliseconds (last resort)
-uv run llm-browser wait --text "Success"     # wait for text to appear
-uv run llm-browser wait --url "**/dashboard" # wait for URL to match a glob pattern
-uv run llm-browser wait --fn "document.readyState === 'complete'"  # wait for a JS bool expr
-uv run llm-browser wait ... --timeout 25     # seconds; default is 25
+llm-browser wait @e1                  # wait for an element
+llm-browser wait --ms 2000            # dumb wait, milliseconds (last resort)
+llm-browser wait --text "Success"     # wait for text to appear
+llm-browser wait --url "**/dashboard" # wait for URL to match a glob pattern
+llm-browser wait --fn "document.readyState === 'complete'"  # wait for a JS bool expr
+llm-browser wait ... --timeout 25     # seconds; default is 25
 ```
 
 **There is no `--load networkidle` catch-all** like agent-browser has.
@@ -152,22 +144,21 @@ instead of reaching for a network-idle wait that doesn't exist here.
 ### Log in
 
 ```bash
-uv run llm-browser open https://app.example.com/login
-uv run llm-browser snapshot -i
+llm-browser open https://app.example.com/login
+llm-browser snapshot -i
 # Pick the email/password/submit refs out of the snapshot, then:
-uv run llm-browser fill @e3 "user@example.com"
-uv run llm-browser fill @e4 "hunter2"
-uv run llm-browser click @e5
-uv run llm-browser wait --url "**/dashboard"
-uv run llm-browser snapshot -i
+llm-browser fill @e3 "user@example.com"
+llm-browser fill @e4 "hunter2"
+llm-browser click @e5
+llm-browser wait --url "**/dashboard"
+llm-browser snapshot -i
 ```
 
 ### Search & deep research
 
 ```bash
-uv run llm-browser search google "llm browser automation"
-uv run llm-browser search bing "llm browser automation"
-uv run llm-browser search duckduckgo "llm browser automation"
+llm-browser search bing "llm browser automation"
+llm-browser search duckduckgo "llm browser automation"
 ```
 
 `search <engine> <query>` opens the engine's query URL directly and
@@ -190,24 +181,22 @@ via `cookies get/set`) plus a scroll-then-snapshot loop for its infinite
 timeline; Hacker News (`search hn ...`) — plain HTML, or `read` the
 Algolia search API URL directly for structured JSON; GitHub (`search
 github ...`) — rate-limits fast unauthenticated, prefer its API beyond a
-few lookups. Full recipes and extraction patterns (structured scraping,
-pagination/infinite scroll loops, respecting rate limits):
-[`docs/deep-research.md`](docs/deep-research.md).
+few lookups.
 
 ### Extract data
 
 ```bash
-uv run llm-browser extract                          # readability-style main content, Markdown
-uv run llm-browser extract --text                    # ...or plain text
+llm-browser extract                          # readability-style main content, Markdown
+llm-browser extract --text                    # ...or plain text
 
-uv run llm-browser read https://example.com --markdown  # fetch + extract a URL directly, no browser tab
+llm-browser read https://example.com --markdown  # fetch + extract a URL directly, no browser tab
 
-uv run llm-browser snapshot -i --json > page.json   # structured, best for reasoning over content
+llm-browser snapshot -i --json > page.json   # structured, best for reasoning over content
 
-uv run llm-browser snapshot -i
-uv run llm-browser get text @e5                      # targeted extraction with a ref
+llm-browser snapshot -i
+llm-browser get text @e5                      # targeted extraction with a ref
 
-cat <<'EOF' | uv run llm-browser eval --stdin
+cat <<'EOF' | llm-browser eval --stdin
 const rows = document.querySelectorAll("table tbody tr");
 Array.from(rows).map(r => ({
   name: r.cells[0].innerText,
@@ -225,9 +214,9 @@ list, and `eval --stdin` (heredoc) for anything else custom. Inline `eval
 ### Screenshot
 
 ```bash
-uv run llm-browser screenshot            # viewport screenshot, printed path
-uv run llm-browser screenshot page.png   # specific path
-uv run llm-browser pdf output.pdf        # save the page as a PDF
+llm-browser screenshot            # viewport screenshot, printed path
+llm-browser screenshot page.png   # specific path
+llm-browser pdf output.pdf        # save the page as a PDF
 ```
 
 **`--full` (full-page, stitched screenshot) is not supported** —
@@ -237,19 +226,19 @@ only viewport screenshots. Don't pass `--full`.
 ## Cookies, storage, tabs, windows
 
 ```bash
-uv run llm-browser cookies get
-uv run llm-browser cookies set <name> <value>
-uv run llm-browser cookies clear
+llm-browser cookies get
+llm-browser cookies set <name> <value>
+llm-browser cookies clear
 
-uv run llm-browser storage get [key] [--session-storage]   # defaults to localStorage
-uv run llm-browser storage set <key> <value> [--session-storage]
-uv run llm-browser storage clear [--session-storage]
+llm-browser storage get [key] [--session-storage]   # defaults to localStorage
+llm-browser storage set <key> <value> [--session-storage]
+llm-browser storage clear [--session-storage]
 
-uv run llm-browser tab new [url]
-uv run llm-browser tab list
-uv run llm-browser tab switch <index>   # -1 = newest
-uv run llm-browser tab close [index]
-uv run llm-browser window new [url]
+llm-browser tab new [url]
+llm-browser tab list
+llm-browser tab switch <index>   # -1 = newest
+llm-browser tab close [index]
+llm-browser window new [url]
 ```
 
 **Tab state isn't persistent across CLI invocations.** There's no
@@ -261,8 +250,8 @@ later commands will see. Treat multi-tab workflows as best-effort.
 ## Captcha solving
 
 ```bash
-uv run llm-browser solve-captcha         # alias: click-captcha
-uv run llm-browser solve-captcha --gui   # real OS pointer, needs --headed
+llm-browser solve-captcha         # alias: click-captcha
+llm-browser solve-captcha --gui   # real OS pointer, needs --headed
 ```
 
 Auto-detects and clicks past whichever of five vendors SeleniumBase
@@ -293,15 +282,3 @@ if the task needs one of these, say so instead of guessing a command:
   vault, plugin system, live-stream viewport, React devtools
   introspection, `vitals`, `a11y` audits, `batch`, an MCP server, or a
   `find role/label/placeholder/testid` semantic-locator system
-
-## Full reference
-
-- [`docs/commands.md`](docs/commands.md) — every command and
-  flag, plus the full "not supported" rationale
-- [`docs/persistent-sessions.md`](docs/persistent-sessions.md) —
-  how the background daemon works
-- [`docs/snapshot-and-refs.md`](docs/snapshot-and-refs.md) — how
-  `@eN` refs are generated and their caveats
-- [`docs/deep-research.md`](docs/deep-research.md) — search engine
-  and site-scoped search recipes (Reddit, X, Hacker News, GitHub) plus
-  web-scraping/extraction patterns for deep-research workflows
