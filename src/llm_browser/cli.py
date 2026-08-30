@@ -31,7 +31,16 @@ from llm_browser.commands import (
     wait,
 )
 
-app = typer.Typer(help="llm-browser: browser automation via SeleniumBase CDP Mode.")
+app = typer.Typer(
+    help="llm-browser: browser automation via SeleniumBase CDP Mode.",
+    epilog="Examples:\n\n"
+    "  llm-browser open https://example.com\n\n"
+    "  llm-browser snapshot -i\n\n"
+    "  llm-browser click @e1\n\n"
+    '  llm-browser fill @e2 "hello@example.com"\n\n'
+    "  llm-browser get text @e3\n\n"
+    "  llm-browser close",
+)
 
 get_app = typer.Typer(help="Get info from the page.")
 is_app = typer.Typer(help="Check element state.")
