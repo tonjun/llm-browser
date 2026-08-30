@@ -15,3 +15,5 @@ archived_logs/
 .seleniumbase/
 
 .DS_Store
+
+tmp/
