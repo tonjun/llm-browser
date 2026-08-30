@@ -51,12 +51,17 @@ the persistent daemon works and `llm-browser close` to shut it down.
 
 ```
 src/llm_browser/
-├── cli.py        # Typer CLI entrypoint - one command per action, grouped
-│                 # into flat verbs (click, fill, ...) and noun sub-apps
-│                 # (get, is, cookies, storage, tab, window)
-├── browser.py    # SeleniumBase CDP Mode helpers: daemon lifecycle, the
-│                 # attach-call-return pattern every command uses, and
-│                 # the snapshot/@ref system
-├── daemon.py     # Background process that owns the persistent Chrome instance
-└── session.py    # State-file helpers coordinating the CLI and the daemon
+├── cli.py          # Typer CLI entrypoint - builds the app + noun sub-apps
+│                   # (get, is, cookies, storage, tab, window) and wires up
+│                   # each commands/*.py module's register()
+├── commands/       # Typer command definitions (arg parsing), one module
+│                   # per topic, mirroring browser/ 1:1
+├── browser/        # SeleniumBase CDP Mode helpers, one module per topic:
+│   ├── core.py     #   daemon lifecycle + the attach-call-return pattern
+│   │               #   every command uses (with_driver, resolve_selector)
+│   ├── snapshot.py #   the accessibility-tree snapshot/@ref system
+│   └── ...         #   navigation, interaction, wait, info, state, capture,
+│                   #   evaluate, storage, tabs, misc, gui, captcha
+├── daemon.py       # Background process that owns the persistent Chrome instance
+└── session.py      # State-file helpers coordinating the CLI and the daemon
 ```
