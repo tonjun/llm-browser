@@ -8,6 +8,32 @@ act on those refs with plain commands.
 
 ## Install
 
+**Standalone CLI, no clone needed** — installs [`uv`](https://astral.sh) if
+it's not already on PATH, then installs `llm-browser` as a global tool:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tonjun/llm-browser/main/install.sh | sh
+```
+
+**Already have `uv`?** Skip the script:
+
+```bash
+uv tool install git+https://github.com/tonjun/llm-browser
+```
+
+**Prefer `pip`/`pipx` over `uv`?** Works too, no `uv` CLI required:
+
+```bash
+pipx install git+https://github.com/tonjun/llm-browser
+# or: pip install --user git+https://github.com/tonjun/llm-browser
+```
+
+Any of the above gets you a `llm-browser` binary on PATH — commands below
+assume that.
+
+**Contributing to this repo?** Clone it and use the local dev loop instead,
+which keeps `uv run llm-browser ...` in sync with your working tree:
+
 ```bash
 uv sync
 ```
@@ -15,13 +41,16 @@ uv sync
 ## The core loop
 
 ```bash
-uv run llm-browser open https://example.com
-uv run llm-browser snapshot -i              # interactive elements only, with @eN refs
-uv run llm-browser click @e1                # act on a ref from the snapshot
-uv run llm-browser fill @e2 "hello@example.com"
-uv run llm-browser get text @e3
-uv run llm-browser close
+llm-browser open https://example.com
+llm-browser snapshot -i              # interactive elements only, with @eN refs
+llm-browser click @e1                # act on a ref from the snapshot
+llm-browser fill @e2 "hello@example.com"
+llm-browser get text @e3
+llm-browser close
 ```
+
+(Running from a repo clone without installing? Prefix each command with
+`uv run` instead, e.g. `uv run llm-browser open https://example.com`.)
 
 The browser session is persistent: the first `open` starts a background
 Chrome instance and leaves it running, and later commands reuse it
@@ -39,9 +68,9 @@ implemented here and why.
 ## Usage
 
 ```bash
-uv run llm-browser open https://example.com
-uv run llm-browser open https://example.com --headless
-uv run llm-browser close
+llm-browser open https://example.com
+llm-browser open https://example.com --headless
+llm-browser close
 ```
 
 See [`skills/llm-browser/docs/persistent-sessions.md`](skills/llm-browser/docs/persistent-sessions.md) for how
@@ -50,10 +79,11 @@ the persistent daemon works and `llm-browser close` to shut it down.
 ## Deep research (search + scraping)
 
 ```bash
-uv run llm-browser search reddit "your query"     # search a known engine/site
-uv run llm-browser extract                        # main content of the open page, as Markdown
-uv run llm-browser read https://example.com --markdown  # fetch a URL directly, no browser tab
-uv run llm-browser scroll down --until-count 50 --selector ".item"  # infinite-scroll pagination
+llm-browser search reddit "your query"     # search a known engine/site
+llm-browser extract                        # main content of the open page, as Markdown
+llm-browser save-markdown notes.md         # save the open page's main content as Markdown to disk
+llm-browser read https://example.com --markdown  # fetch a URL directly, no browser tab
+llm-browser scroll down --until-count 50 --selector ".item"  # infinite-scroll pagination
 ```
 
 For workflows that search engines and specific sites (Reddit, X/Twitter,
