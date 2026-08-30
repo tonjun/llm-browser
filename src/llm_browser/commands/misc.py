@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import re
+
 import typer
 
-from llm_browser.browser import gui, misc
+from llm_browser.browser import fetch, gui, misc
 from llm_browser.commands import _print
+
+_URL_RE = re.compile(r"^https?://")
 
 
 def register(app: typer.Typer) -> None:
@@ -18,10 +22,22 @@ def register(app: typer.Typer) -> None:
 
     @app.command()
     def read(
-        selector: str = typer.Argument(None, help="Only this subtree (CSS selector)."),
+        target: str = typer.Argument(
+            None,
+            help="CSS selector to scope to (open page), or a URL to fetch "
+            "directly without a browser tab.",
+        ),
+        markdown: bool = typer.Option(
+            False,
+            "--markdown",
+            help="For a URL, extract as Markdown instead of plain text.",
+        ),
     ) -> None:
-        """Read the current page as plain text."""
-        print(misc.read_page(selector))
+        """Read the current page as plain text, or fetch a URL directly."""
+        if target and _URL_RE.match(target):
+            print(fetch.fetch_url(target, markdown=markdown))
+        else:
+            print(misc.read_page(target))
 
     @app.command(name="internalize-links")
     def internalize_links() -> None:

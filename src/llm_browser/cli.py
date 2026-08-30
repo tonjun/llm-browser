@@ -20,10 +20,12 @@ from llm_browser.commands import (
     captcha,
     capture,
     evaluate,
+    extract,
     info,
     interaction,
     misc,
     navigation,
+    search,
     snapshot,
     state,
     storage,
@@ -59,6 +61,8 @@ app.add_typer(window_app, name="window")
 navigation.register(app)
 interaction.register(app)
 wait.register(app)
+search.register(app)
+extract.register(app)
 info.register(get_app)
 state.register(is_app)
 capture.register(app)

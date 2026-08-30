@@ -49,11 +49,18 @@ the persistent daemon works and `llm-browser close` to shut it down.
 
 ## Deep research (search + scraping)
 
+```bash
+uv run llm-browser search reddit "your query"     # search a known engine/site
+uv run llm-browser extract                        # main content of the open page, as Markdown
+uv run llm-browser read https://example.com --markdown  # fetch a URL directly, no browser tab
+uv run llm-browser scroll down --until-count 50 --selector ".item"  # infinite-scroll pagination
+```
+
 For workflows that search engines and specific sites (Reddit, X/Twitter,
 Hacker News, GitHub, ...) and then extract structured data from the
 results, see [`docs/deep-research.md`](docs/deep-research.md) — recipes for
-site-scoped search, structured extraction via `snapshot --json`/`eval`, and
-handling pagination/infinite scroll.
+site-scoped search, structured extraction, and handling pagination/infinite
+scroll.
 
 ## Claude Code skill
 

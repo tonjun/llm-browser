@@ -157,6 +157,32 @@ class TestScroll:
             interaction.scroll("sideways")
 
 
+class TestScrollUntilCount:
+    def test_returns_once_target_reached(self, d):
+        d.find_elements.side_effect = [[1], [1, 2], [1, 2, 3]]
+        result = interaction.scroll_until_count("#item", 3)
+        assert result == 3
+        assert d.scroll_down.call_count == 2
+
+    def test_resolves_ref_selector(self, d):
+        d.find_elements.return_value = [1, 2, 3]
+        interaction.scroll_until_count("@e1", 3)
+        d.find_elements.assert_called_with('[data-llmb-ref="e1"]')
+
+    def test_stops_when_growth_stalls(self, d):
+        d.find_elements.side_effect = [[1], [1, 2], [1, 2]]
+        result = interaction.scroll_until_count("#item", 10)
+        assert result == 2
+        assert d.scroll_down.call_count == 2
+
+    def test_stops_at_timeout(self, d, monkeypatch):
+        times = iter([0, 0, 100])  # deadline check trips on 3rd read
+        monkeypatch.setattr(interaction.time, "monotonic", lambda: next(times))
+        d.find_elements.return_value = [1]
+        result = interaction.scroll_until_count("#item", 10, timeout=1)
+        assert result == 1
+
+
 def test_scroll_into_view(d):
     interaction.scroll_into_view("#a")
     d.scroll_into_view.assert_called_once_with("#a")

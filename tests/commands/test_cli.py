@@ -17,6 +17,7 @@ from llm_browser.browser import (
     captcha,
     capture,
     core,
+    fetch,
     gui,
     info,
     interaction,
@@ -27,6 +28,8 @@ from llm_browser.browser import (
     tabs,
 )
 from llm_browser.browser import evaluate as evaluate_mod
+from llm_browser.browser import extract as extract_mod
+from llm_browser.browser import search as search_mod
 from llm_browser.browser import snapshot as snapshot_mod
 from llm_browser.browser import wait as wait_mod
 from llm_browser.cli import app
@@ -147,6 +150,30 @@ class TestInteraction:
         result = runner.invoke(app, ["scroll", "down", "100"])
         assert result.exit_code == 0
         scroll.assert_called_once_with("down", 100)
+
+    def test_scroll_until_count(self, monkeypatch):
+        scroll_until_count = MagicMock(return_value=12)
+        monkeypatch.setattr(interaction, "scroll_until_count", scroll_until_count)
+        result = runner.invoke(
+            app,
+            [
+                "scroll",
+                "down",
+                "--until-count",
+                "10",
+                "--selector",
+                ".item",
+                "--timeout",
+                "5",
+            ],
+        )
+        assert result.exit_code == 0
+        assert result.output.strip() == "12"
+        scroll_until_count.assert_called_once_with(".item", 10, px=300, timeout=5.0)
+
+    def test_scroll_until_count_requires_selector(self, monkeypatch):
+        result = runner.invoke(app, ["scroll", "down", "--until-count", "10"])
+        assert result.exit_code != 0
 
 
 class TestWait:
@@ -288,11 +315,71 @@ class TestMisc:
         assert result.exit_code == 0
         assert result.output.strip() == "some text"
 
+    def test_read_scoped_to_selector(self, monkeypatch):
+        read_page = MagicMock(return_value="scoped text")
+        monkeypatch.setattr(misc, "read_page", read_page)
+        result = runner.invoke(app, ["read", "#a"])
+        assert result.exit_code == 0
+        read_page.assert_called_once_with("#a")
+
+    def test_read_url_fetches_instead_of_open_page(self, monkeypatch):
+        fetch_url = MagicMock(return_value="fetched text")
+        read_page = MagicMock()
+        monkeypatch.setattr(fetch, "fetch_url", fetch_url)
+        monkeypatch.setattr(misc, "read_page", read_page)
+        result = runner.invoke(app, ["read", "https://example.com"])
+        assert result.exit_code == 0
+        assert result.output.strip() == "fetched text"
+        fetch_url.assert_called_once_with("https://example.com", markdown=False)
+        read_page.assert_not_called()
+
+    def test_read_url_with_markdown_flag(self, monkeypatch):
+        fetch_url = MagicMock(return_value="# fetched markdown")
+        monkeypatch.setattr(fetch, "fetch_url", fetch_url)
+        result = runner.invoke(app, ["read", "https://example.com", "--markdown"])
+        assert result.exit_code == 0
+        fetch_url.assert_called_once_with("https://example.com", markdown=True)
+
     def test_mfa_code(self, monkeypatch):
         monkeypatch.setattr(misc, "mfa_code", lambda key: "123456")
         result = runner.invoke(app, ["mfa-code", "SECRET"])
         assert result.exit_code == 0
         assert result.output.strip() == "123456"
+
+
+class TestSearch:
+    def test_search_forwards_engine_and_query(self, monkeypatch):
+        search = MagicMock(return_value="snapshot output")
+        monkeypatch.setattr(search_mod, "search", search)
+        result = runner.invoke(app, ["search", "google", "llm browser automation"])
+        assert result.exit_code == 0
+        assert result.output.strip() == "snapshot output"
+        search.assert_called_once_with("google", "llm browser automation")
+
+    def test_search_unknown_engine_exits_nonzero(self, monkeypatch):
+        def raise_unknown(engine, query):
+            raise ValueError(f"Unknown search engine: {engine!r}.")
+
+        monkeypatch.setattr(search_mod, "search", raise_unknown)
+        result = runner.invoke(app, ["search", "altavista", "x"])
+        assert result.exit_code != 0
+
+
+class TestExtract:
+    def test_extract_defaults_to_markdown(self, monkeypatch):
+        extract_content = MagicMock(return_value="# Title")
+        monkeypatch.setattr(extract_mod, "extract_content", extract_content)
+        result = runner.invoke(app, ["extract"])
+        assert result.exit_code == 0
+        assert result.output.strip() == "# Title"
+        extract_content.assert_called_once_with(markdown=True)
+
+    def test_extract_text_flag(self, monkeypatch):
+        extract_content = MagicMock(return_value="Title")
+        monkeypatch.setattr(extract_mod, "extract_content", extract_content)
+        result = runner.invoke(app, ["extract", "--text"])
+        assert result.exit_code == 0
+        extract_content.assert_called_once_with(markdown=False)
 
 
 class TestCaptcha:

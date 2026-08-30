@@ -2,33 +2,32 @@
 
 A playbook for the loop deep-research workflows repeat constantly: search a
 source, land on results, extract structured data, and repeat across pages,
-threads, or sites. It's built entirely out of the commands documented in
-[`commands.md`](commands.md) — nothing here is a special mode, just a
-recipe for combining `open`/`snapshot`/`fill`/`eval`/`read` well. See
-[`snapshot-and-refs.md`](snapshot-and-refs.md) for how `@eN` refs work if
-you're new to the ref model.
+threads, or sites. It's built out of the commands documented in
+[`commands.md`](commands.md) — `search`, `extract`, and `scroll
+--until-count` are dedicated shortcuts for the three steps of that loop;
+the rest is the same `open`/`snapshot`/`fill`/`eval`/`read` toolkit used
+everywhere else in this CLI. See [`snapshot-and-refs.md`](snapshot-and-refs.md)
+for how `@eN` refs work if you're new to the ref model.
 
 ## General web search
 
 ```bash
-# Google
-uv run llm-browser open https://www.google.com
-uv run llm-browser snapshot -i
-# Pick the search box ref, then:
-uv run llm-browser fill @e1 "llm browser automation"
-uv run llm-browser press Enter
-uv run llm-browser wait --text "results"
-uv run llm-browser snapshot -i -u
-
-# Bing / DuckDuckGo: same recipe, different homepage
-uv run llm-browser open https://www.bing.com
-uv run llm-browser open https://duckduckgo.com
+uv run llm-browser search google "llm browser automation"
+uv run llm-browser search bing "llm browser automation"
+uv run llm-browser search duckduckgo "llm browser automation"
 ```
 
-Same `open` → `snapshot -i` (find the search box ref) → `fill` → `press
-Enter` → re-`snapshot -i -u` loop each time. `-u` on the results snapshot
-pulls result `href`s directly, so you can `open` a result's link or `click`
-its ref without a second `get attr @eN href` round-trip.
+`search <engine> <query>` opens the engine's query URL directly and
+returns a `snapshot -i -u` of the results in one call — no re-deriving a
+search-box `@eN` ref each time. `-u` on that snapshot means result
+`href`s are already in the output, so you can `open` a result's link or
+`click @eN` on it without a second `get attr @eN href` round-trip.
+
+If you need to drive a search box by hand instead (a site not in
+`search`'s known-engine list, or you need intermediate steps like
+changing a filter first), the underlying loop is: `open` the homepage,
+`snapshot -i` to find the search box's ref, `fill` the query, `press
+Enter`, then re-`snapshot -i -u`.
 
 ## Site-scoped search
 
@@ -40,8 +39,7 @@ below follows the same core loop; only the caveats differ.
 ### Reddit (reddit.com)
 
 ```bash
-uv run llm-browser open https://old.reddit.com/search/?q=your+query
-uv run llm-browser snapshot -i -u
+uv run llm-browser search reddit "your query"
 ```
 
 - **Prefer `old.reddit.com` over `www.reddit.com`** for scraping — its
@@ -82,8 +80,7 @@ uv run llm-browser snapshot -i -u
 ### Hacker News (news.ycombinator.com)
 
 ```bash
-uv run llm-browser open "https://hn.algolia.com/?q=your+query"
-uv run llm-browser snapshot -i -u
+uv run llm-browser search hn "your query"
 ```
 
 - Plain server-rendered HTML on both `news.ycombinator.com` and the Algolia
@@ -91,36 +88,54 @@ uv run llm-browser snapshot -i -u
   `snapshot` or a plain `eval` selector query.
 - **Prefer the Algolia HN Search API directly** when you just need
   structured data (title, points, comment count, url) rather than rendered
-  HTML: `open` `https://hn.algolia.com/api/v1/search?query=<query>` and the
-  JSON response renders as page text — `get text` or `read` pulls it back
-  as a JSON string you can parse. No auth, no rate-limit surprises, no
-  markup to fight.
+  HTML: `read https://hn.algolia.com/api/v1/search?query=<query>` fetches
+  the JSON response as text (no browser tab needed) — parse it directly
+  rather than scraping rendered HTML. No auth, no rate-limit surprises.
 
 ### GitHub (code / issue search)
 
 ```bash
-uv run llm-browser open "https://github.com/search?q=your+query&type=code"
-uv run llm-browser snapshot -i -u
+uv run llm-browser search github "your query"
 ```
 
-Same loop; unauthenticated search works for public repos but is rate
-limited quickly. For anything beyond a handful of lookups, prefer the
+Unauthenticated search works for public repos but is rate limited quickly.
+For anything beyond a handful of lookups, prefer the
 [GitHub REST/GraphQL API](https://docs.github.com/en/rest) (via `eval` +
 `fetch()` with a token in a header, or an external HTTP client outside this
 CLI) over scraping the search UI.
 
 ### Any other site
 
-Don't guess query-string formats. `open` the site's homepage or search
-page, `snapshot -i` to find the search input's ref, `fill` + `press Enter`,
-then `snapshot -i -u` the results — the same four-step loop as every
-example above. It's robust to markup/URL differences because it never
-depends on either.
+`search` only knows the engines above. For anything else, don't guess
+query-string formats — `open` the site's homepage or search page,
+`snapshot -i` to find the search input's ref, `fill` + `press Enter`, then
+`snapshot -i -u` the results. It's robust to markup/URL differences
+because it never depends on either.
 
 ## Web scraping / extraction patterns
 
 These build directly on commands already documented in
 [`commands.md`](commands.md) — nothing new to install or enable.
+
+**Readability-style main content** — `extract` pulls the article/post body
+out of the *currently open* page (JS-rendered, logged-in session and all)
+as Markdown, using `trafilatura`'s main-content detection so you don't
+have to hand-write a selector or `eval` script for "just the article
+text":
+
+```bash
+uv run llm-browser open https://example.com/some-article
+uv run llm-browser extract              # Markdown
+uv run llm-browser extract --text       # plain text
+```
+
+For a URL you don't need to actually visit in the browser (no JS, no
+login required), `read <url>` does the same extraction via a plain HTTP
+fetch instead — cheaper for batch lookups:
+
+```bash
+uv run llm-browser read https://example.com/some-article --markdown
+```
 
 **Structured result lists** — `snapshot -i --json` gives ref-addressable,
 machine-parseable output, best when you want to reason over a page's
@@ -155,15 +170,13 @@ than a full snapshot when you already know which ref you want.
 
 ### Pagination / infinite scroll
 
-There's no built-in "scroll until N results" command — script the loop
-yourself:
+`scroll --until-count` formalizes the scroll-and-collect loop: it keeps
+scrolling down until a selector matches at least N elements, growth stalls
+(end of content), or a timeout elapses.
 
 ```bash
-uv run llm-browser scroll down 2000
-uv run llm-browser wait --ms 500          # let lazy content render
-uv run llm-browser snapshot -i --json     # or eval to collect new items
-# repeat, de-duping against what you already collected, until no new
-# content appears or you've reached the depth you need
+uv run llm-browser scroll down --until-count 50 --selector ".athing" --timeout 20
+uv run llm-browser snapshot -i --json     # or eval, to collect the loaded items
 ```
 
 For sites with real "next page" links/buttons instead of infinite scroll,

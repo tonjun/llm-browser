@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json as json_module
+import time
 
 from seleniumbase.core.sb_cdp import CDPMethods
 
@@ -137,6 +138,26 @@ def scroll(direction: str, px: int = 300) -> None:
             raise ValueError(f"Unknown scroll direction: {direction!r}")
 
     with_driver(_run)
+
+
+def scroll_until_count(
+    selector: str, target: int, px: int = 2000, timeout: float = 25.0
+) -> int:
+    sel = resolve_selector(selector)
+
+    def _run(d: CDPMethods) -> int:
+        deadline = time.monotonic() + timeout
+        last_count = -1
+        while time.monotonic() < deadline:
+            count = len(d.find_elements(sel))
+            if count >= target or count == last_count:
+                return count  # hit the target, or growth has stalled
+            last_count = count
+            d.scroll_down(px)
+            d.sleep(0.5)
+        return len(d.find_elements(sel))
+
+    return with_driver(_run)
 
 
 def scroll_into_view(selector: str) -> None:

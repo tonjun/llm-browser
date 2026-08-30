@@ -8,7 +8,9 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "requests>=2.32",
     "seleniumbase>=4.52.4",
+    "trafilatura>=1.12",
     "typer>=0.27.2",
 ]
 

@@ -146,8 +146,31 @@ def register(app: typer.Typer) -> None:
         px: int = typer.Argument(
             300, help="Pixels to scroll (ignored for top/bottom)."
         ),
+        until_count: int = typer.Option(
+            None,
+            "--until-count",
+            help="Keep scrolling down until --selector matches this many "
+            "elements, growth stalls, or --timeout elapses.",
+        ),
+        selector: str = typer.Option(
+            None,
+            "--selector",
+            help="Element selector to count (required with --until-count).",
+        ),
+        timeout: float = typer.Option(
+            25.0, "--timeout", help="Max seconds for --until-count."
+        ),
     ) -> None:
         """Scroll the page."""
+        if until_count is not None:
+            if not selector:
+                raise typer.BadParameter("--until-count requires --selector.")
+            print(
+                interaction.scroll_until_count(
+                    selector, until_count, px=px, timeout=timeout
+                )
+            )
+            return
         if direction == "top":
             interaction.scroll_to_top()
         elif direction == "bottom":

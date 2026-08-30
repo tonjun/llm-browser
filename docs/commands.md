@@ -22,6 +22,19 @@ llm-browser forward                   # Go forward
 llm-browser reload [--ignore-cache]   # Reload the current page
 ```
 
+## Search
+
+```bash
+llm-browser search <engine> <query>
+```
+
+Drives straight to a known engine/site's query URL (no re-deriving a
+search-box `@eN` ref every call) and returns a `snapshot -i -u` of the
+results. `<engine>` is one of `google`, `bing`, `duckduckgo` (`ddg`),
+`reddit`, `hn` (`hackernews`), or `github`. See
+[`deep-research.md`](deep-research.md) for per-site caveats (e.g. why
+`reddit` search targets `old.reddit.com`).
+
 ## Interaction
 
 ```bash
@@ -40,6 +53,7 @@ llm-browser select <sel> <value...>     # Select one or more dropdown options by
 llm-browser drag <src> <dst>            # Drag and drop
 llm-browser upload <sel> <file...>      # Upload file(s) to a file input
 llm-browser scroll <dir> [px]           # up | down | left | right | top | bottom
+llm-browser scroll down --until-count <n> --selector <css> [--timeout s]  # scroll-and-collect
 llm-browser scrollintoview <sel>        # Scroll an element into view
 ```
 
@@ -56,6 +70,11 @@ Caveats:
   `<option>` and firing one `change` event.
 - `scroll left`/`right` have no dedicated SeleniumBase method; done via
   `window.scrollBy(...)`.
+- `--until-count` formalizes the infinite-scroll pagination loop: scrolls
+  down, prints the resulting element count, and repeats until `--selector`
+  matches at least `<n>` elements, the count stops growing between scrolls
+  (end of content), or `--timeout` (default 25s) elapses. Requires
+  `--selector`.
 
 ## Wait
 
@@ -174,6 +193,8 @@ navigation, no cross-origin iframe inlining).
 ```bash
 llm-browser highlight <sel>          # Highlight an element
 llm-browser read [sel]               # Read the current page as plain text
+llm-browser read <url> [--markdown]  # Fetch a URL directly (no browser tab)
+llm-browser extract [--text]         # Readability-style main content of the open page (Markdown by default)
 llm-browser internalize-links        # Rewrite target="_blank" links to same-tab
 llm-browser tile-windows             # Tile open browser windows
 llm-browser mfa-code [totp-key]      # Generate a TOTP code
@@ -181,15 +202,26 @@ llm-browser enter-mfa <sel> [totp-key]  # Generate and enter a TOTP code
 llm-browser gui-hover-click <hover-sel> <click-sel>  # Hover then click via real OS pointer
 ```
 
-`read` (no URL) reads the *currently open* page as plain text via
-SeleniumBase's `get_beautiful_soup()`. agent-browser's `read <url>`
-variant (fetch without opening a browser, with `llms.txt`/markdown
-negotiation) is a separate HTTP-fetch feature and isn't implemented.
+`read` (no argument, or a CSS selector) reads the *currently open* page as
+plain text via SeleniumBase's `get_beautiful_soup()`. `read <url>` instead
+fetches that URL directly over HTTP - no browser tab involved, so no JS
+rendering or session cookies - and runs it through `trafilatura` for
+readability-style main-content extraction (plain text, or `--markdown`);
+falls back to the raw fetched text if `trafilatura` can't find a
+main-content region. This is a plain HTTP fetch, not agent-browser's
+`llms.txt`-negotiation variant.
+
+`extract` runs the same `trafilatura` extraction against the *currently
+open* page's rendered HTML instead of a fresh fetch - use it (rather than
+`read <url>`) for JS-heavy or logged-in pages where the content only
+exists after the browser has rendered it. Falls back to the whole page's
+plain text if `trafilatura` finds no main-content region.
 
 See [`deep-research.md`](deep-research.md) for search + web-scraping
-recipes built on `snapshot`, `get`, `eval`, and `read` — general and
-site-scoped search (Reddit, X, Hacker News, GitHub), structured
-extraction, and pagination/infinite-scroll patterns.
+recipes built on `search`, `snapshot`, `get`, `eval`, `read`, `extract`,
+and `scroll --until-count` — general and site-scoped search (Reddit, X,
+Hacker News, GitHub), structured extraction, and pagination/infinite-scroll
+patterns.
 
 ## Captcha solving
 
@@ -258,21 +290,3 @@ Not part of this pass, but worth picking up next:
   more of the plain interaction commands (beyond `click`/`drag`) is a
   natural follow-up for sites with bot detection that flags
   CDP-dispatched input.
-- **`search <engine> <query>`** — a convenience command wrapping the
-  open → snapshot → fill → press-Enter → snapshot recipe documented in
-  [`deep-research.md`](deep-research.md) for a few known engines/sites
-  (`google`/`bing`/`duckduckgo`, maybe `reddit`/`hn`), so agents don't
-  have to re-derive search-box refs on every call.
-- **A URL-fetch `read <url>` mode** (agent-browser parity, noted above)
-  — HTTP fetch + readability/markdown extraction without spinning up a
-  browser tab at all, useful for cheap batch fetches in research
-  workflows that don't need JS rendering.
-- **A scroll-and-collect helper** (e.g. `scroll --until-count <n>
-  <sel>`) to formalize the infinite-scroll pagination loop
-  `deep-research.md` currently documents as a manual scroll/wait/
-  snapshot loop — useful for X/Twitter-style timelines and any other
-  infinite-scroll result list.
-- **A structured-extraction helper** (e.g. `extract --template` or a
-  readability-style "main content as markdown" command) so agents
-  don't have to hand-write `eval` scripts for the common "get me the
-  article/post text and comments" case.

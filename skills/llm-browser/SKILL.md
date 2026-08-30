@@ -89,11 +89,14 @@ uv run llm-browser get styles @e1      # computed styles (all, or --prop name)
 uv run llm-browser get cdp-url         # CDP WebSocket URL
 
 uv run llm-browser read                # read the *currently open* page as plain text
+uv run llm-browser read <url>          # fetch a URL directly, no browser tab (--markdown for Markdown)
 ```
 
-`read` only reads whatever page is currently open in the session —
-unlike agent-browser's `read <url>`, there's no fetch-without-a-browser
-/ `llms.txt`-negotiation variant here.
+`read` with no argument (or a CSS selector) reads whatever page is
+currently open in the session. `read <url>` fetches that URL directly
+over plain HTTP instead — no JS rendering, no session cookies — similar
+in spirit to agent-browser's `read <url>`, though without its
+`llms.txt`-negotiation step.
 
 ## Interacting
 
@@ -160,53 +163,43 @@ uv run llm-browser snapshot -i
 ### Search & deep research
 
 ```bash
-# Google
-uv run llm-browser open https://www.google.com
-uv run llm-browser snapshot -i
-# Pick the search box ref, then:
-uv run llm-browser fill @e1 "llm browser automation"
-uv run llm-browser press Enter
-uv run llm-browser wait --text "results"
-uv run llm-browser snapshot -i -u
-
-# Bing
-uv run llm-browser open https://www.bing.com
-uv run llm-browser snapshot -i
-uv run llm-browser fill @e1 "llm browser automation"
-uv run llm-browser press Enter
-uv run llm-browser snapshot -i -u
-
-# DuckDuckGo
-uv run llm-browser open https://duckduckgo.com
-uv run llm-browser snapshot -i
-uv run llm-browser fill @e1 "llm browser automation"
-uv run llm-browser press Enter
-uv run llm-browser snapshot -i -u
+uv run llm-browser search google "llm browser automation"
+uv run llm-browser search bing "llm browser automation"
+uv run llm-browser search duckduckgo "llm browser automation"
 ```
 
-Same snapshot → act loop as any other page: `open` the homepage,
-`snapshot -i` to find the search box's `@eN` ref (the `@e1`s above are
-illustrative — use whatever ref your own snapshot assigns), `fill` the
-query, then `press Enter` to submit. Re-snapshot afterward since the
-page navigated. Use `-u` on the results snapshot to include result
-`href`s directly, so you can pull out links without a second `get attr
-@eN href` round-trip — either `click @eN` on a result's ref, or `open`
-its href directly if you already have it from the `-u` output.
+`search <engine> <query>` opens the engine's query URL directly and
+returns a `snapshot -i -u` of the results in one call — `-u` means result
+`href`s are already in the output, so pull out links without a second
+`get attr @eN href` round-trip, either `click @eN` on a result's ref or
+`open` its href directly.
+
+If a site isn't one of `search`'s known engines, drive its search box by
+hand with the same underlying loop: `open` the homepage, `snapshot -i` to
+find the search box's `@eN` ref, `fill` the query, `press Enter`, then
+re-`snapshot -i -u`.
 
 **Site-scoped search** (research sources beyond general web search) needs
-per-site handling: Reddit — prefer `old.reddit.com` for scrapable markup,
-and expect comment threads to need "load more" clicks; X/Twitter — most
-content needs a logged-in session (reuse cookies via `cookies get/set`)
-plus a scroll-then-snapshot loop for its infinite timeline; Hacker News —
-plain HTML, or hit the Algolia search API directly for structured JSON;
-GitHub — rate-limits fast unauthenticated, prefer its API beyond a few
-lookups. Full recipes and extraction patterns (structured scraping,
+per-site handling: Reddit (`search reddit ...`) — targets `old.reddit.com`
+for scrapable markup, and expect comment threads to need "load more"
+clicks; X/Twitter (not in `search`'s list — use the manual loop against
+`x.com/search`) — most content needs a logged-in session (reuse cookies
+via `cookies get/set`) plus a scroll-then-snapshot loop for its infinite
+timeline; Hacker News (`search hn ...`) — plain HTML, or `read` the
+Algolia search API URL directly for structured JSON; GitHub (`search
+github ...`) — rate-limits fast unauthenticated, prefer its API beyond a
+few lookups. Full recipes and extraction patterns (structured scraping,
 pagination/infinite scroll loops, respecting rate limits):
 [`docs/deep-research.md`](../../docs/deep-research.md).
 
 ### Extract data
 
 ```bash
+uv run llm-browser extract                          # readability-style main content, Markdown
+uv run llm-browser extract --text                    # ...or plain text
+
+uv run llm-browser read https://example.com --markdown  # fetch + extract a URL directly, no browser tab
+
 uv run llm-browser snapshot -i --json > page.json   # structured, best for reasoning over content
 
 uv run llm-browser snapshot -i
@@ -221,8 +214,11 @@ Array.from(rows).map(r => ({
 EOF
 ```
 
-Prefer `eval --stdin` (heredoc) for any JS with quotes or special
-characters; inline `eval "..."` only works for simple expressions.
+Prefer `extract` for an article/post's main body (readability-style, no
+selector needed), `read <url>` when you don't even need the page open in
+the browser, `snapshot -i --json` for a structured, ref-addressable result
+list, and `eval --stdin` (heredoc) for anything else custom. Inline `eval
+"..."` only works for simple expressions.
 
 ### Screenshot
 
