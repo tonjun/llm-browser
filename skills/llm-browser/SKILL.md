@@ -157,7 +157,7 @@ uv run llm-browser wait --url "**/dashboard"
 uv run llm-browser snapshot -i
 ```
 
-### Search (Google, Bing, DuckDuckGo)
+### Search & deep research
 
 ```bash
 # Google
@@ -192,6 +192,17 @@ page navigated. Use `-u` on the results snapshot to include result
 `href`s directly, so you can pull out links without a second `get attr
 @eN href` round-trip — either `click @eN` on a result's ref, or `open`
 its href directly if you already have it from the `-u` output.
+
+**Site-scoped search** (research sources beyond general web search) needs
+per-site handling: Reddit — prefer `old.reddit.com` for scrapable markup,
+and expect comment threads to need "load more" clicks; X/Twitter — most
+content needs a logged-in session (reuse cookies via `cookies get/set`)
+plus a scroll-then-snapshot loop for its infinite timeline; Hacker News —
+plain HTML, or hit the Algolia search API directly for structured JSON;
+GitHub — rate-limits fast unauthenticated, prefer its API beyond a few
+lookups. Full recipes and extraction patterns (structured scraping,
+pagination/infinite scroll loops, respecting rate limits):
+[`docs/deep-research.md`](../../docs/deep-research.md).
 
 ### Extract data
 
@@ -293,3 +304,6 @@ if the task needs one of these, say so instead of guessing a command:
   how the background daemon works
 - [`docs/snapshot-and-refs.md`](../../docs/snapshot-and-refs.md) — how
   `@eN` refs are generated and their caveats
+- [`docs/deep-research.md`](../../docs/deep-research.md) — search engine
+  and site-scoped search recipes (Reddit, X, Hacker News, GitHub) plus
+  web-scraping/extraction patterns for deep-research workflows

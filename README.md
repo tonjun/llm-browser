@@ -47,6 +47,14 @@ uv run llm-browser close
 See [`docs/persistent-sessions.md`](docs/persistent-sessions.md) for how
 the persistent daemon works and `llm-browser close` to shut it down.
 
+## Deep research (search + scraping)
+
+For workflows that search engines and specific sites (Reddit, X/Twitter,
+Hacker News, GitHub, ...) and then extract structured data from the
+results, see [`docs/deep-research.md`](docs/deep-research.md) — recipes for
+site-scoped search, structured extraction via `snapshot --json`/`eval`, and
+handling pagination/infinite scroll.
+
 ## Claude Code skill
 
 [`skills/llm-browser/SKILL.md`](skills/llm-browser/SKILL.md) teaches

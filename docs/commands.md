@@ -186,6 +186,11 @@ SeleniumBase's `get_beautiful_soup()`. agent-browser's `read <url>`
 variant (fetch without opening a browser, with `llms.txt`/markdown
 negotiation) is a separate HTTP-fetch feature and isn't implemented.
 
+See [`deep-research.md`](deep-research.md) for search + web-scraping
+recipes built on `snapshot`, `get`, `eval`, and `read` — general and
+site-scoped search (Reddit, X, Hacker News, GitHub), structured
+extraction, and pagination/infinite-scroll patterns.
+
 ## Captcha solving
 
 ```bash
@@ -253,3 +258,21 @@ Not part of this pass, but worth picking up next:
   more of the plain interaction commands (beyond `click`/`drag`) is a
   natural follow-up for sites with bot detection that flags
   CDP-dispatched input.
+- **`search <engine> <query>`** — a convenience command wrapping the
+  open → snapshot → fill → press-Enter → snapshot recipe documented in
+  [`deep-research.md`](deep-research.md) for a few known engines/sites
+  (`google`/`bing`/`duckduckgo`, maybe `reddit`/`hn`), so agents don't
+  have to re-derive search-box refs on every call.
+- **A URL-fetch `read <url>` mode** (agent-browser parity, noted above)
+  — HTTP fetch + readability/markdown extraction without spinning up a
+  browser tab at all, useful for cheap batch fetches in research
+  workflows that don't need JS rendering.
+- **A scroll-and-collect helper** (e.g. `scroll --until-count <n>
+  <sel>`) to formalize the infinite-scroll pagination loop
+  `deep-research.md` currently documents as a manual scroll/wait/
+  snapshot loop — useful for X/Twitter-style timelines and any other
+  infinite-scroll result list.
+- **A structured-extraction helper** (e.g. `extract --template` or a
+  readability-style "main content as markdown" command) so agents
+  don't have to hand-write `eval` scripts for the common "get me the
+  article/post text and comments" case.
