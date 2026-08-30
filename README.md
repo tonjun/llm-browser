@@ -1,10 +1,29 @@
 # llm-browser
 
-A Python CLI for browser automation, built on
-[SeleniumBase](https://seleniumbase.io/) CDP Mode, with a command
-surface modeled on [agent-browser](https://github.com) - navigate,
-snapshot the page as an accessibility tree with stable `@eN` refs, then
-act on those refs with plain commands.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://github.com/astral-sh/ruff)
+[![uv](https://img.shields.io/badge/managed%20with-uv-de5fe9.svg)](https://astral.sh)
+
+A Python CLI for browser automation that drives a real Chrome browser
+in stealth mode - undetected by anti-bot and captcha systems - and
+exposes it as a small set of plain commands: navigate, snapshot the
+page as an accessibility tree with stable `@eN` refs, then act on
+those refs (click, fill, get text, ...). Built for driving from an LLM
+agent, but works fine as a regular scripted CLI too.
+
+## Contents
+
+- [Install](#install)
+- [Requirements](#requirements)
+- [Built on](#built-on)
+- [The core loop](#the-core-loop)
+- [Usage](#usage)
+- [Deep research (search + scraping)](#deep-research-search--scraping)
+- [Claude Code skill](#claude-code-skill)
+- [Project layout](#project-layout)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Install
 
@@ -37,6 +56,20 @@ which keeps `uv run llm-browser ...` in sync with your working tree:
 ```bash
 uv sync
 ```
+
+## Requirements
+
+- Python 3.11+
+- A local install of Google Chrome (driven in CDP Mode; other
+  Chromium-based browsers may work but aren't tested)
+
+## Built on
+
+The stealth/undetected browsing and captcha-solving is
+[SeleniumBase](https://seleniumbase.io/)'s CDP Mode + UC Mode doing
+the heavy lifting - this CLI is a thin, LLM-friendly command layer on
+top of it. The command surface itself is modeled on `agent-browser`,
+a similar tool with the same `@eN`-ref snapshot model.
 
 ## The core loop
 
@@ -130,3 +163,21 @@ src/llm_browser/
 ├── daemon.py       # Background process that owns the persistent Chrome instance
 └── session.py      # State-file helpers coordinating the CLI and the daemon
 ```
+
+## Contributing
+
+Contributions are welcome. After `uv sync` (see [Install](#install)):
+
+```bash
+make test    # run the test suite (pytest)
+make lint    # ruff check
+make format  # ruff format
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, including
+where tests and commands each live and what a good PR looks like.
+Please open an issue first for anything beyond a small fix.
+
+## License
+
+[MIT](LICENSE)

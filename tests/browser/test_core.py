@@ -257,7 +257,7 @@ class TestEnsureTarget:
 
     def test_creates_a_tab_when_no_targets_at_all(self, monkeypatch):
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
-        get = MagicMock(return_value=MagicMock(json=lambda: []))
+        get = MagicMock(return_value=MagicMock(json=list))
         put = MagicMock()
         monkeypatch.setattr(core.requests, "get", get)
         monkeypatch.setattr(core.requests, "put", put)

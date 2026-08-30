@@ -1,8 +1,10 @@
 [project]
 name = "llm-browser"
 version = "0.1.0"
-description = "A browser automation CLI built on SeleniumBase CDP Mode"
+description = "A stealth browser automation CLI for LLM agents"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Antonio Banaag II", email = "tonjun@gmail.com" }
 ]
