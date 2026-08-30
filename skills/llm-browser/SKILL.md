@@ -157,6 +157,42 @@ uv run llm-browser wait --url "**/dashboard"
 uv run llm-browser snapshot -i
 ```
 
+### Search (Google, Bing, DuckDuckGo)
+
+```bash
+# Google
+uv run llm-browser open https://www.google.com
+uv run llm-browser snapshot -i
+# Pick the search box ref, then:
+uv run llm-browser fill @e1 "llm browser automation"
+uv run llm-browser press Enter
+uv run llm-browser wait --text "results"
+uv run llm-browser snapshot -i -u
+
+# Bing
+uv run llm-browser open https://www.bing.com
+uv run llm-browser snapshot -i
+uv run llm-browser fill @e1 "llm browser automation"
+uv run llm-browser press Enter
+uv run llm-browser snapshot -i -u
+
+# DuckDuckGo
+uv run llm-browser open https://duckduckgo.com
+uv run llm-browser snapshot -i
+uv run llm-browser fill @e1 "llm browser automation"
+uv run llm-browser press Enter
+uv run llm-browser snapshot -i -u
+```
+
+Same snapshot → act loop as any other page: `open` the homepage,
+`snapshot -i` to find the search box's `@eN` ref (the `@e1`s above are
+illustrative — use whatever ref your own snapshot assigns), `fill` the
+query, then `press Enter` to submit. Re-snapshot afterward since the
+page navigated. Use `-u` on the results snapshot to include result
+`href`s directly, so you can pull out links without a second `get attr
+@eN href` round-trip — either `click @eN` on a result's ref, or `open`
+its href directly if you already have it from the `-u` output.
+
 ### Extract data
 
 ```bash
