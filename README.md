@@ -47,6 +47,26 @@ uv run llm-browser close
 See [`docs/persistent-sessions.md`](docs/persistent-sessions.md) for how
 the persistent daemon works and `llm-browser close` to shut it down.
 
+## Claude Code skill
+
+[`skills/llm-browser/SKILL.md`](skills/llm-browser/SKILL.md) teaches
+Claude Code (or any compatible agent) how to drive this CLI correctly
+— the core loop, the persistent-session model, and the places this
+tool's command surface diverges from `agent-browser`, the CLI its
+commands are modeled on. It's already wired up via a committed symlink
+at `.claude/skills/llm-browser`, which is where Claude Code looks for
+project skills, so it loads automatically in this repo. If a clone
+loses the symlink (e.g. a zip download, or a filesystem without
+symlink support), recreate it with:
+
+```bash
+mkdir -p .claude/skills
+ln -s ../../skills/llm-browser .claude/skills/llm-browser
+```
+
+Edit `skills/llm-browser/SKILL.md` itself when the command surface
+changes — that's the canonical, version-controlled copy.
+
 ## Project layout
 
 ```
