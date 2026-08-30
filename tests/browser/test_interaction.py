@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -64,13 +65,59 @@ def test_fill_clears_then_types(d):
 
 
 class TestPress:
-    def test_press_with_selector(self, d):
-        interaction.press("Enter", selector="#a")
-        d.press_keys.assert_called_once_with("#a", "Enter")
+    @pytest.fixture
+    def d(self, monkeypatch):
+        # These need a real event loop: unlike the module-level `d`
+        # fixture's plain MagicMock, `_dispatch_key_combo` builds a
+        # coroutine and hands it to `d.loop.run_until_complete` - a mocked
+        # loop would just swallow that coroutine object without ever
+        # running it, so `d.page.send` would never actually be awaited.
+        driver = MagicMock()
+        driver.loop = asyncio.new_event_loop()
+        driver.page.send = AsyncMock(return_value=None)
+        monkeypatch.setattr(interaction, "with_driver", lambda fn: fn(driver))
+        yield driver
+        driver.loop.close()
 
-    def test_press_without_selector_uses_focus(self, d):
+    def _sent_events(self, d):
+        # Each call.args[0] is the generator mycdp.input_.dispatch_key_event()
+        # returns; advancing it once yields the {"method", "params"} dict
+        # that would actually go out over the CDP websocket.
+        return [next(call.args[0])["params"] for call in d.page.send.call_args_list]
+
+    def test_press_enter_dispatches_key_event_not_literal_text(self, d):
+        # Regression: press("Enter") must not type the literal characters
+        # "E", "n", "t", "e", "r" into the focused element.
         interaction.press("Enter")
-        d.press_keys.assert_called_once_with(":focus", "Enter")
+        events = self._sent_events(d)
+        assert len(events) == 2  # keyDown, keyUp
+        assert all(e["key"] == "Enter" for e in events)
+        assert [e["type"] for e in events] == ["keyDown", "keyUp"]
+
+    def test_press_with_selector_focuses_first(self, d):
+        interaction.press("Enter", selector="#a")
+        d.focus.assert_called_once_with("#a")
+
+    def test_press_without_selector_does_not_focus(self, d):
+        interaction.press("Enter")
+        d.focus.assert_not_called()
+
+    def test_press_resolves_ref_selector(self, d):
+        interaction.press("Enter", selector="@e1")
+        d.focus.assert_called_once_with('[data-llmb-ref="e1"]')
+
+    def test_press_modifier_combo(self, d):
+        interaction.press("Control+a")
+        events = self._sent_events(d)
+        types = [e["type"] for e in events]
+        assert types == ["rawKeyDown", "rawKeyDown", "keyUp", "keyUp"]
+        assert events[0]["key"] == "Control"
+        assert events[1]["key"] == "a"
+        assert events[1]["modifiers"] == 2  # Control held while "a" goes down
+
+    def test_press_unknown_key_raises(self, d):
+        with pytest.raises(ValueError, match="Unknown key"):
+            interaction.press("Nonexistent")
 
 
 def test_hover(d):

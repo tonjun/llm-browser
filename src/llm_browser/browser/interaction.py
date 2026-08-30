@@ -5,6 +5,7 @@ from __future__ import annotations
 import json as json_module
 import time
 
+import mycdp.input_ as cdp_input
 from seleniumbase.core.sb_cdp import CDPMethods
 
 from llm_browser.browser.core import (
@@ -13,6 +14,108 @@ from llm_browser.browser.core import (
     resolve_selector,
     with_driver,
 )
+
+# name -> (key, code, windowsVirtualKeyCode, text-to-insert-or-None).
+# CDPMethods.press_keys()/type()/send_keys() all end up typing their
+# argument as literal characters (see seleniumbase's Element.send_keys),
+# so there is no way to ask them for a *named* key like "Enter" - passing
+# "Enter" that way just types the five letters E-n-t-e-r. Named keys and
+# modifier combos ("Control+a") need real CDP Input.dispatchKeyEvent
+# calls instead, which is what _KEY_TABLE/_dispatch_key_combo below build.
+_KEY_TABLE: dict[str, tuple[str, str, int, str | None]] = {
+    "enter": ("Enter", "Enter", 13, "\r"),
+    "return": ("Enter", "Enter", 13, "\r"),
+    "tab": ("Tab", "Tab", 9, "\t"),
+    "escape": ("Escape", "Escape", 27, None),
+    "esc": ("Escape", "Escape", 27, None),
+    "backspace": ("Backspace", "Backspace", 8, None),
+    "delete": ("Delete", "Delete", 46, None),
+    "del": ("Delete", "Delete", 46, None),
+    "space": (" ", "Space", 32, " "),
+    "home": ("Home", "Home", 36, None),
+    "end": ("End", "End", 35, None),
+    "pageup": ("PageUp", "PageUp", 33, None),
+    "pagedown": ("PageDown", "PageDown", 34, None),
+    "arrowup": ("ArrowUp", "ArrowUp", 38, None),
+    "up": ("ArrowUp", "ArrowUp", 38, None),
+    "arrowdown": ("ArrowDown", "ArrowDown", 40, None),
+    "down": ("ArrowDown", "ArrowDown", 40, None),
+    "arrowleft": ("ArrowLeft", "ArrowLeft", 37, None),
+    "left": ("ArrowLeft", "ArrowLeft", 37, None),
+    "arrowright": ("ArrowRight", "ArrowRight", 39, None),
+    "right": ("ArrowRight", "ArrowRight", 39, None),
+}
+for _i in range(1, 13):
+    _KEY_TABLE[f"f{_i}"] = (f"F{_i}", f"F{_i}", 111 + _i, None)
+
+# modifier name -> (bit, key, code, windowsVirtualKeyCode), for combos
+# like "Control+a".
+_MODIFIER_TABLE: dict[str, tuple[int, str, str, int]] = {
+    "alt": (1, "Alt", "AltLeft", 18),
+    "option": (1, "Alt", "AltLeft", 18),
+    "control": (2, "Control", "ControlLeft", 17),
+    "ctrl": (2, "Control", "ControlLeft", 17),
+    "meta": (4, "Meta", "MetaLeft", 91),
+    "command": (4, "Meta", "MetaLeft", 91),
+    "cmd": (4, "Meta", "MetaLeft", 91),
+    "shift": (8, "Shift", "ShiftLeft", 16),
+}
+
+
+def _lookup_key(name: str) -> tuple[str, str | None, int | None, str | None]:
+    entry = _KEY_TABLE.get(name.lower())
+    if entry:
+        return entry
+    if len(name) == 1:
+        if name.isalpha():
+            return (name, f"Key{name.upper()}", ord(name.upper()), name)
+        if name.isdigit():
+            return (name, f"Digit{name}", ord(name), name)
+        return (name, None, None, name)  # punctuation: text-only, no code
+    raise ValueError(f"Unknown key: {name!r}")
+
+
+def _dispatch_key_combo(d: CDPMethods, key_spec: str) -> None:
+    parts = [p for p in key_spec.split("+") if p]
+    if not parts:
+        raise ValueError("press requires a key.")
+    *mod_names, main = parts
+    mods = []
+    for name in mod_names:
+        entry = _MODIFIER_TABLE.get(name.lower())
+        if not entry:
+            raise ValueError(f"Unknown modifier: {name!r}")
+        mods.append(entry)
+    key, code, vk, text = _lookup_key(main)
+    non_shift_mods = any(bit != 8 for bit, *_ in mods)
+    insert_text = text if not non_shift_mods else None
+
+    async def _run() -> None:
+        held = 0
+
+        def _key_event(type_: str, k: str, c: str | None, v: int | None, txt=None):
+            return cdp_input.dispatch_key_event(
+                type_=type_,
+                modifiers=held,
+                key=k,
+                code=c,
+                windows_virtual_key_code=v,
+                text=txt,
+            )
+
+        for bit, mkey, mcode, mvk in mods:
+            held |= bit
+            await d.page.send(_key_event("rawKeyDown", mkey, mcode, mvk))
+        if insert_text is not None:
+            await d.page.send(_key_event("keyDown", key, code, vk, insert_text))
+        else:
+            await d.page.send(_key_event("rawKeyDown", key, code, vk))
+        await d.page.send(_key_event("keyUp", key, code, vk))
+        for bit, mkey, mcode, mvk in reversed(mods):
+            held &= ~bit
+            await d.page.send(_key_event("keyUp", mkey, mcode, mvk))
+
+    d.loop.run_until_complete(_run())
 
 
 def click(selector: str | None = None, text: str | None = None) -> None:
@@ -55,12 +158,12 @@ def fill(selector: str, text: str) -> None:
 
 
 def press(key: str, selector: str | None = None) -> None:
-    # No selector-less "send to whatever has focus" primitive is exposed
-    # directly; ``:focus`` is a valid querySelector pseudo-class in
-    # Chrome, so it stands in for "the currently focused element" when
-    # no selector is given.
-    sel = resolve_selector(selector) if selector else ":focus"
-    with_driver(lambda d: d.press_keys(sel, key))
+    def _run(d: CDPMethods) -> None:
+        if selector:
+            d.focus(resolve_selector(selector))
+        _dispatch_key_combo(d, key)
+
+    with_driver(_run)
 
 
 def hover(selector: str) -> None:
