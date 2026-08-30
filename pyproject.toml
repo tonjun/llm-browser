@@ -1,0 +1,20 @@
+[project]
+name = "llm-browser"
+version = "0.1.0"
+description = "A browser automation CLI built on SeleniumBase CDP Mode"
+readme = "README.md"
+authors = [
+    { name = "Antonio Banaag II", email = "tonjun@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "seleniumbase>=4.52.4",
+    "typer>=0.27.2",
+]
+
+[project.scripts]
+llm-browser = "llm_browser.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.11.32,<0.12.0"]
+build-backend = "uv_build"

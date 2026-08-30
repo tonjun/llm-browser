@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# SeleniumBase artifacts
+downloaded_files/
+geckodriver.log
+latest_logs/
+archived_logs/
+.seleniumbase/
+
+.DS_Store
