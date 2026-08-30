@@ -310,10 +310,24 @@ class TestCaptcha:
 
 class TestCapture:
     def test_screenshot(self, monkeypatch):
-        monkeypatch.setattr(capture, "screenshot", lambda path: "/tmp/out.png")
+        monkeypatch.setattr(
+            capture, "screenshot", lambda path, full_page=False: "/tmp/out.png"
+        )
         result = runner.invoke(app, ["screenshot"])
         assert result.exit_code == 0
         assert result.output.strip() == "/tmp/out.png"
+
+    def test_screenshot_full(self, monkeypatch):
+        calls = {}
+
+        def fake_screenshot(path, full_page=False):
+            calls["full_page"] = full_page
+            return "/tmp/out.png"
+
+        monkeypatch.setattr(capture, "screenshot", fake_screenshot)
+        result = runner.invoke(app, ["screenshot", "--full"])
+        assert result.exit_code == 0
+        assert calls["full_page"] is True
 
     def test_pdf_requires_path(self):
         result = runner.invoke(app, ["pdf"])

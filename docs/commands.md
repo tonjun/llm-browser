@@ -105,13 +105,9 @@ llm-browser is online          # Does the browser have network connectivity?
 ## Screenshots & PDF
 
 ```bash
-llm-browser screenshot [path]   # Save a screenshot (viewport only)
-llm-browser pdf <path>          # Save the current page as a PDF
+llm-browser screenshot [path] [--full]   # Save a screenshot (--full for full-page)
+llm-browser pdf <path>                   # Save the current page as a PDF
 ```
-
-**`--full` (full-page, stitched screenshot) is not supported** -
-SeleniumBase's CDP-mode API has no native full-page capture method,
-only viewport screenshots.
 
 ## Eval
 
@@ -229,7 +225,6 @@ persistent state across CLI invocations, not just a shared browser):
   need the daemon itself to hold a persistent event buffer/handler
 - `trace`/`profiler` start/stop, `record` (video capture)
 - `frame <sel>` - iframe context switching
-- `screenshot --full` - full-page stitched screenshots
 - `--session <name>` multi-session isolation, `state save/load`, `auth`
   vault, `plugin` system, `stream` (live viewport streaming), `react
   ...` devtools introspection, `vitals`, `a11y` audits, `batch`,
@@ -248,9 +243,6 @@ Not part of this pass, but worth picking up next:
 - **Persistent active-tab tracking** in the daemon, so `tab switch`
   actually affects later CLI invocations instead of only the command
   that called it (see the caveat under [Tabs & windows](#tabs--windows)).
-- **`--full` full-page screenshots**, if a stitching approach (resize +
-  multiple captures, or a scroll-and-composite loop) proves reliable
-  enough to commit to.
 - Everything under [Not supported (yet)](#not-supported-yet) above,
   most of which would need raw CDP `Network`/`Emulation`/`Input`
   domain work similar to what `snapshot` already does for

@@ -13,9 +13,15 @@ def register(app: typer.Typer) -> None:
         path: str = typer.Argument(
             None, help="Output path (default: a generated path)."
         ),
+        full: bool = typer.Option(
+            False,
+            "-f",
+            "--full",
+            help="Capture the full scrollable page, not just the viewport.",
+        ),
     ) -> None:
-        """Take a screenshot (viewport only - see docs/commands.md for the --full caveat)."""
-        print(capture.screenshot(path))
+        """Take a screenshot."""
+        print(capture.screenshot(path, full_page=full))
 
     @app.command()
     def pdf(path: str = typer.Argument(..., help="Output path.")) -> None:

@@ -34,6 +34,21 @@ class TestScreenshot:
         assert result == "out.png"
         d.save_screenshot.assert_called_once_with("out.png", folder=".")
 
+    def test_full_page_uses_page_save_screenshot_via_loop(self, d):
+        result = capture.screenshot("/tmp/shots/out.png", full_page=True)
+        assert result == "/tmp/shots/out.png"
+        d.save_screenshot.assert_not_called()
+        d.page.save_screenshot.assert_called_once_with(
+            "/tmp/shots/out.png", full_page=True
+        )
+        d.loop.run_until_complete.assert_called_once()
+
+    def test_full_page_no_path_generates_one_under_state_dir(self, d):
+        result = capture.screenshot(None, full_page=True)
+        assert result.startswith(str(session.state_dir()))
+        assert result.endswith(".png")
+        d.page.save_screenshot.assert_called_once_with(result, full_page=True)
+
 
 class TestSavePdf:
     def test_splits_path_into_folder_and_name(self, d):
