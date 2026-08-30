@@ -17,3 +17,5 @@ archived_logs/
 .DS_Store
 
 tmp/
+docs/agent-browser/
+docs/seleniumbase/
