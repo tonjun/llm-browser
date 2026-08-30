@@ -28,10 +28,10 @@ Chrome instance and leaves it running, and later commands reuse it
 instead of launching a new one. Refs (`@e1`, `@e2`, ...) are assigned
 fresh on every `snapshot` call and go stale the moment the page
 navigates or re-renders - re-snapshot after any page-changing action.
-See [`docs/snapshot-and-refs.md`](docs/snapshot-and-refs.md) for the
+See [`skills/llm-browser/docs/snapshot-and-refs.md`](skills/llm-browser/docs/snapshot-and-refs.md) for the
 full ref-staleness model and its caveats.
 
-See [`docs/commands.md`](docs/commands.md) for the full command
+See [`skills/llm-browser/docs/commands.md`](skills/llm-browser/docs/commands.md) for the full command
 reference (interaction, get/is, cookies/storage, tabs, captcha
 solving, and more), including what agent-browser supports that isn't
 implemented here and why.
@@ -44,7 +44,7 @@ uv run llm-browser open https://example.com --headless
 uv run llm-browser close
 ```
 
-See [`docs/persistent-sessions.md`](docs/persistent-sessions.md) for how
+See [`skills/llm-browser/docs/persistent-sessions.md`](skills/llm-browser/docs/persistent-sessions.md) for how
 the persistent daemon works and `llm-browser close` to shut it down.
 
 ## Deep research (search + scraping)
@@ -58,7 +58,7 @@ uv run llm-browser scroll down --until-count 50 --selector ".item"  # infinite-s
 
 For workflows that search engines and specific sites (Reddit, X/Twitter,
 Hacker News, GitHub, ...) and then extract structured data from the
-results, see [`docs/deep-research.md`](docs/deep-research.md) — recipes for
+results, see [`skills/llm-browser/docs/deep-research.md`](skills/llm-browser/docs/deep-research.md) — recipes for
 site-scoped search, structured extraction, and handling pagination/infinite
 scroll.
 

@@ -1,7 +1,7 @@
 ---
 name: llm-browser
-description: Browser automation via the llm-browser CLI (SeleniumBase CDP mode) — navigate, snapshot the page as an accessibility tree with @eN refs, click/fill/type, extract text, screenshot, manage cookies/storage/tabs, solve captchas. Use whenever the user asks to interact with a website, fill a form, click something, extract data, take a screenshot, log into a site, or automate any browser task in this project.
-allowed-tools: Bash(uv run llm-browser:*)
+description: Browser automation via the llm-browser CLI (SeleniumBase CDP mode) — navigate, snapshot the page as an accessibility tree with @eN refs, click/fill/type, search the web, scrape/extract page data, screenshot, manage cookies/storage/tabs, solve captchas. Use whenever the user asks to interact with a website, fill a form, click something, search the web, scrape or extract data from a page, take a screenshot, log into a site, or automate any browser task.
+allowed-tools: Bash(uv run llm-browser:*), Bash(llm-browser:*)
 ---
 
 # llm-browser
@@ -12,11 +12,13 @@ CDP mode. Its command surface is modeled on the `agent-browser` npm CLI
 `@eN` refs → act on those refs), but it's a separate implementation
 with a smaller surface and some real differences — don't assume an
 `agent-browser` flag exists here just because it sounds familiar. When
-in doubt, check [`docs/commands.md`](../../docs/commands.md), the
+in doubt, check [`docs/commands.md`](docs/commands.md), the
 source of truth for every command and flag.
 
 All commands below are invoked as `uv run llm-browser <command>` from
-the repo root.
+the repo root. If `llm-browser` is installed globally instead (`uv tool
+install .` / `pipx install .`), drop the `uv run` prefix and invoke it
+directly as `llm-browser <command>`.
 
 ## The core loop
 
@@ -33,7 +35,7 @@ uv run llm-browser close
 assigned fresh on every `snapshot` call. After any page-changing
 action (a click that navigates, a form submit, an SPA re-render),
 re-snapshot before using a ref again — a stale ref just won't resolve.
-See [`docs/snapshot-and-refs.md`](../../docs/snapshot-and-refs.md) for
+See [`docs/snapshot-and-refs.md`](docs/snapshot-and-refs.md) for
 the full model (how refs are tagged, why cross-origin iframes aren't
 inlined, etc.).
 
@@ -62,7 +64,7 @@ session.
   by side.
 
 Full detail (state layout under `~/.llm-browser/`, crash recovery,
-race handling): [`docs/persistent-sessions.md`](../../docs/persistent-sessions.md).
+race handling): [`docs/persistent-sessions.md`](docs/persistent-sessions.md).
 
 ## Reading a page
 
@@ -190,7 +192,7 @@ Algolia search API URL directly for structured JSON; GitHub (`search
 github ...`) — rate-limits fast unauthenticated, prefer its API beyond a
 few lookups. Full recipes and extraction patterns (structured scraping,
 pagination/infinite scroll loops, respecting rate limits):
-[`docs/deep-research.md`](../../docs/deep-research.md).
+[`docs/deep-research.md`](docs/deep-research.md).
 
 ### Extract data
 
@@ -294,12 +296,12 @@ if the task needs one of these, say so instead of guessing a command:
 
 ## Full reference
 
-- [`docs/commands.md`](../../docs/commands.md) — every command and
+- [`docs/commands.md`](docs/commands.md) — every command and
   flag, plus the full "not supported" rationale
-- [`docs/persistent-sessions.md`](../../docs/persistent-sessions.md) —
+- [`docs/persistent-sessions.md`](docs/persistent-sessions.md) —
   how the background daemon works
-- [`docs/snapshot-and-refs.md`](../../docs/snapshot-and-refs.md) — how
+- [`docs/snapshot-and-refs.md`](docs/snapshot-and-refs.md) — how
   `@eN` refs are generated and their caveats
-- [`docs/deep-research.md`](../../docs/deep-research.md) — search engine
+- [`docs/deep-research.md`](docs/deep-research.md) — search engine
   and site-scoped search recipes (Reddit, X, Hacker News, GitHub) plus
   web-scraping/extraction patterns for deep-research workflows
