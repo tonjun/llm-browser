@@ -10,17 +10,23 @@ from llm_browser.commands import _print
 
 def register(get_app: typer.Typer) -> None:
     @get_app.command("text")
-    def get_text(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def get_text(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Get an element's visible text."""
         _print(info.get_text(selector))
 
     @get_app.command("html")
-    def get_html(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def get_html(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Get an element's innerHTML."""
         _print(info.get_html(selector))
 
     @get_app.command("value")
-    def get_value(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def get_value(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Get an input's value."""
         _print(info.get_value(selector))
 
@@ -48,14 +54,18 @@ def register(get_app: typer.Typer) -> None:
         _print(info.get_count(selector))
 
     @get_app.command("box")
-    def get_box(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def get_box(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Get an element's bounding box."""
         _print(info.get_box(selector))
 
     @get_app.command("styles")
     def get_styles(
         selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
-        prop: str = typer.Option(None, "--prop", help="Only this computed style property."),
+        prop: str = typer.Option(
+            None, "--prop", help="Only this computed style property."
+        ),
     ) -> None:
         """Get an element's computed styles."""
         _print(info.get_styles(selector, prop=prop))

@@ -12,7 +12,9 @@ def register(app: typer.Typer) -> None:
     @app.command(name="click-captcha")
     def solve_captcha(
         gui: bool = typer.Option(
-            False, "--gui", help="Solve via real OS pointer (PyAutoGUI) instead of CDP; needs --headed."
+            False,
+            "--gui",
+            help="Solve via real OS pointer (PyAutoGUI) instead of CDP; needs --headed.",
         ),
     ) -> None:
         """Auto-detect and solve/click past a supported captcha on the page.

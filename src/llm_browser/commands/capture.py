@@ -9,7 +9,11 @@ from llm_browser.browser import capture
 
 def register(app: typer.Typer) -> None:
     @app.command()
-    def screenshot(path: str = typer.Argument(None, help="Output path (default: a generated path).")) -> None:
+    def screenshot(
+        path: str = typer.Argument(
+            None, help="Output path (default: a generated path)."
+        ),
+    ) -> None:
         """Take a screenshot (viewport only - see docs/commands.md for the --full caveat)."""
         print(capture.screenshot(path))
 

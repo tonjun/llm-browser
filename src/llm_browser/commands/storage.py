@@ -30,7 +30,11 @@ def register(cookies_app: typer.Typer, storage_app: typer.Typer) -> None:
     @storage_app.command("get")
     def storage_get(
         key: str = typer.Argument(None, help="Key to read (omit for all keys)."),
-        session_storage: bool = typer.Option(False, "--session-storage", help="Use sessionStorage instead of localStorage."),
+        session_storage: bool = typer.Option(
+            False,
+            "--session-storage",
+            help="Use sessionStorage instead of localStorage.",
+        ),
     ) -> None:
         """Get a storage value, or all of storage if no key is given."""
         _print(storage.storage_get(key=key, use_session=session_storage))
@@ -39,14 +43,22 @@ def register(cookies_app: typer.Typer, storage_app: typer.Typer) -> None:
     def storage_set(
         key: str = typer.Argument(..., help="Key to write."),
         value: str = typer.Argument(..., help="Value to write."),
-        session_storage: bool = typer.Option(False, "--session-storage", help="Use sessionStorage instead of localStorage."),
+        session_storage: bool = typer.Option(
+            False,
+            "--session-storage",
+            help="Use sessionStorage instead of localStorage.",
+        ),
     ) -> None:
         """Set a storage value."""
         storage.storage_set(key, value, use_session=session_storage)
 
     @storage_app.command("clear")
     def storage_clear(
-        session_storage: bool = typer.Option(False, "--session-storage", help="Use sessionStorage instead of localStorage."),
+        session_storage: bool = typer.Option(
+            False,
+            "--session-storage",
+            help="Use sessionStorage instead of localStorage.",
+        ),
     ) -> None:
         """Clear storage."""
         storage.storage_clear(use_session=session_storage)

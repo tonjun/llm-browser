@@ -17,8 +17,8 @@ from __future__ import annotations
 import typer
 
 from llm_browser.commands import (
-    capture,
     captcha,
+    capture,
     evaluate,
     info,
     interaction,

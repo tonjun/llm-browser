@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import mycdp
-import mycdp.accessibility  # noqa: F401 - not re-exported by mycdp/__init__.py
+import mycdp.accessibility
 from seleniumbase.core.sb_cdp import CDPMethods
 
 from llm_browser.browser.core import _REF_ATTR, with_driver
@@ -115,12 +115,20 @@ def _find_ax_id_for_selector(
     described = _cdp_send(driver, mycdp.dom.describe_node(node_id=node_id))
     target_backend_id = int(described.backend_node_id)
     for ax_id, node in index.items():
-        if node.backend_dom_node_id is not None and int(node.backend_dom_node_id) == target_backend_id:
+        if (
+            node.backend_dom_node_id is not None
+            and int(node.backend_dom_node_id) == target_backend_id
+        ):
             return ax_id
     raise ValueError(f"No accessibility node found for selector: {selector!r}")
 
 
-def _iter_nodes(index: dict[str, _SnapshotNode], ax_id: str | None, raw_depth: int, depth_limit: int | None):
+def _iter_nodes(
+    index: dict[str, _SnapshotNode],
+    ax_id: str | None,
+    raw_depth: int,
+    depth_limit: int | None,
+):
     """DFS over the raw AX tree, yielding (raw_depth, node) pairs."""
     if ax_id is None or ax_id not in index:
         return
@@ -173,10 +181,10 @@ def _render(levels, hrefs: dict, as_json: bool) -> str:
     lines = []
     for item in items:
         indent = "  " * item["level"]
-        ref_part = f'{item["ref"]} ' if item["ref"] else ""
+        ref_part = f"{item['ref']} " if item["ref"] else ""
         name_part = f' "{item["name"]}"' if item["name"] else ""
         href_part = f' href="{item["href"]}"' if item["href"] else ""
-        lines.append(f'{indent}{ref_part}[{item["role"]}]{name_part}{href_part}')
+        lines.append(f"{indent}{ref_part}[{item['role']}]{name_part}{href_part}")
     return "\n".join(lines)
 
 
@@ -208,7 +216,11 @@ def snapshot(
         if not index:
             return "[]" if as_json else ""
 
-        root_id = _find_ax_id_for_selector(d, index, selector) if selector else _find_root(index)
+        root_id = (
+            _find_ax_id_for_selector(d, index, selector)
+            if selector
+            else _find_root(index)
+        )
         pairs = _iter_nodes(index, root_id, 0, depth)
         levels = _filter_and_level(pairs, interactive, compact)
 
@@ -237,7 +249,9 @@ def snapshot(
                 continue
             _cdp_send(
                 d,
-                mycdp.dom.set_attribute_value(node_id=node_ids[0], name=_REF_ATTR, value=node.ref),
+                mycdp.dom.set_attribute_value(
+                    node_id=node_ids[0], name=_REF_ATTR, value=node.ref
+                ),
             )
 
         hrefs: dict = {}

@@ -28,7 +28,7 @@ from llm_browser import session
 def _run(headless: bool) -> None:
     driver = sb_cdp.Chrome(headless=headless, user_data_dir=str(session.profile_dir()))
 
-    def _shutdown(_signum, _frame) -> None:  # noqa: ANN001 - signal handler signature
+    def _shutdown(_signum, _frame) -> None:
         try:
             driver.quit()
         finally:
@@ -45,7 +45,9 @@ def _run(headless: bool) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="llm-browser persistent session daemon")
+    parser = argparse.ArgumentParser(
+        description="llm-browser persistent session daemon"
+    )
     parser.add_argument("--headless", action="store_true")
     args = parser.parse_args()
     _run(headless=args.headless)

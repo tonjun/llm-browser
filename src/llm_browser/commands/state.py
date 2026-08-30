@@ -10,17 +10,23 @@ from llm_browser.commands import _print
 
 def register(is_app: typer.Typer) -> None:
     @is_app.command("visible")
-    def is_visible(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def is_visible(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Check whether an element is visible."""
         _print(state.is_visible(selector))
 
     @is_app.command("enabled")
-    def is_enabled(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def is_enabled(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Check whether an element is enabled."""
         _print(state.is_enabled(selector))
 
     @is_app.command("checked")
-    def is_checked(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def is_checked(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Check whether a checkbox is checked."""
         _print(state.is_checked(selector))
 

@@ -11,7 +11,9 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def open(
         url: str = typer.Argument(..., help="URL to open."),
-        headless: bool = typer.Option(False, "--headless", help="Run the browser headlessly."),
+        headless: bool = typer.Option(
+            False, "--headless", help="Run the browser headlessly."
+        ),
     ) -> None:
         """Open URL in a SeleniumBase CDP Mode browser session.
 
@@ -40,7 +42,9 @@ def register(app: typer.Typer) -> None:
 
     @app.command()
     def reload(
-        ignore_cache: bool = typer.Option(False, "--ignore-cache", help="Bypass the cache on reload."),
+        ignore_cache: bool = typer.Option(
+            False, "--ignore-cache", help="Bypass the cache on reload."
+        ),
     ) -> None:
         """Reload the current page."""
         navigation.reload_page(ignore_cache=ignore_cache)

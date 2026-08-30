@@ -11,8 +11,14 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def click(
         selector: str = typer.Argument(None, help="CSS selector or @eN ref."),
-        text: str = typer.Option(None, "--text", help="Click the first element matching this text instead."),
-        gui_: bool = typer.Option(False, "--gui", help="Click via real OS pointer (PyAutoGUI); needs --headed."),
+        text: str = typer.Option(
+            None, "--text", help="Click the first element matching this text instead."
+        ),
+        gui_: bool = typer.Option(
+            False,
+            "--gui",
+            help="Click via real OS pointer (PyAutoGUI); needs --headed.",
+        ),
     ) -> None:
         """Click an element."""
         if gui_:
@@ -23,7 +29,9 @@ def register(app: typer.Typer) -> None:
         interaction.click(selector=selector, text=text)
 
     @app.command()
-    def dblclick(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def dblclick(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Double-click an element."""
         interaction.dblclick(selector)
 
@@ -45,8 +53,14 @@ def register(app: typer.Typer) -> None:
 
     @app.command()
     def press(
-        key: str = typer.Argument(..., help="Key or combination, e.g. Enter, Control+a."),
-        selector: str = typer.Option(None, "--selector", help="Element to send the key to (default: focused element)."),
+        key: str = typer.Argument(
+            ..., help="Key or combination, e.g. Enter, Control+a."
+        ),
+        selector: str = typer.Option(
+            None,
+            "--selector",
+            help="Element to send the key to (default: focused element).",
+        ),
     ) -> None:
         """Press a key."""
         interaction.press(key, selector=selector)
@@ -54,7 +68,11 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def hover(
         selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
-        gui_: bool = typer.Option(False, "--gui", help="Hover via real OS pointer (PyAutoGUI); needs --headed."),
+        gui_: bool = typer.Option(
+            False,
+            "--gui",
+            help="Hover via real OS pointer (PyAutoGUI); needs --headed.",
+        ),
     ) -> None:
         """Hover over an element."""
         if gui_:
@@ -62,28 +80,38 @@ def register(app: typer.Typer) -> None:
             # to the same selector is the closest primitive, so route plain
             # hover through the CDP path unless the user really wants a
             # hover+click gesture via `gui-hover-click`.
-            raise typer.BadParameter("Use `gui-hover-click` for GUI-driven hover+click.")
+            raise typer.BadParameter(
+                "Use `gui-hover-click` for GUI-driven hover+click."
+            )
         interaction.hover(selector)
 
     @app.command()
-    def focus(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def focus(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Focus an element."""
         interaction.focus(selector)
 
     @app.command()
-    def check(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def check(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Check a checkbox."""
         interaction.check(selector)
 
     @app.command()
-    def uncheck(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def uncheck(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Uncheck a checkbox."""
         interaction.uncheck(selector)
 
     @app.command()
     def select(
         selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
-        values: list[str] = typer.Argument(..., help="One or more option values to select."),
+        values: list[str] = typer.Argument(
+            ..., help="One or more option values to select."
+        ),
     ) -> None:
         """Select dropdown option(s) by value."""
         interaction.select_option(selector, values)
@@ -92,7 +120,9 @@ def register(app: typer.Typer) -> None:
     def drag(
         src: str = typer.Argument(..., help="Source CSS selector or @eN ref."),
         dst: str = typer.Argument(..., help="Destination CSS selector or @eN ref."),
-        gui_: bool = typer.Option(False, "--gui", help="Drag via real OS pointer (PyAutoGUI); needs --headed."),
+        gui_: bool = typer.Option(
+            False, "--gui", help="Drag via real OS pointer (PyAutoGUI); needs --headed."
+        ),
     ) -> None:
         """Drag and drop."""
         if gui_:
@@ -110,8 +140,12 @@ def register(app: typer.Typer) -> None:
 
     @app.command()
     def scroll(
-        direction: str = typer.Argument("down", help="up, down, left, right, top, or bottom."),
-        px: int = typer.Argument(300, help="Pixels to scroll (ignored for top/bottom)."),
+        direction: str = typer.Argument(
+            "down", help="up, down, left, right, top, or bottom."
+        ),
+        px: int = typer.Argument(
+            300, help="Pixels to scroll (ignored for top/bottom)."
+        ),
     ) -> None:
         """Scroll the page."""
         if direction == "top":
@@ -122,6 +156,8 @@ def register(app: typer.Typer) -> None:
             interaction.scroll(direction, px)
 
     @app.command()
-    def scrollintoview(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def scrollintoview(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Scroll an element into view."""
         interaction.scroll_into_view(selector)

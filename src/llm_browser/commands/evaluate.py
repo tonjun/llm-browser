@@ -14,7 +14,9 @@ def register(app: typer.Typer) -> None:
     @app.command()
     def eval(
         js: str = typer.Argument(None, help="JavaScript to evaluate."),
-        stdin: bool = typer.Option(False, "--stdin", help="Read the script from stdin instead."),
+        stdin: bool = typer.Option(
+            False, "--stdin", help="Read the script from stdin instead."
+        ),
     ) -> None:
         """Evaluate JavaScript in the page."""
         script = sys.stdin.read() if stdin else js

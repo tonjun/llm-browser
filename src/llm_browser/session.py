@@ -98,9 +98,7 @@ def is_daemon_alive(state: SessionState | None) -> bool:
         return False
     if not _pid_alive(state.pid):
         return False
-    if not _port_open(state.host, state.port):
-        return False
-    return True
+    return _port_open(state.host, state.port)
 
 
 @contextlib.contextmanager

@@ -17,7 +17,8 @@ import signal
 import subprocess
 import sys
 import time
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 from seleniumbase import sb_cdp
 from seleniumbase.core.sb_cdp import CDPMethods

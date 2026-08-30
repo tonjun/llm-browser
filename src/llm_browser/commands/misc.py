@@ -10,12 +10,16 @@ from llm_browser.commands import _print
 
 def register(app: typer.Typer) -> None:
     @app.command()
-    def highlight(selector: str = typer.Argument(..., help="CSS selector or @eN ref.")) -> None:
+    def highlight(
+        selector: str = typer.Argument(..., help="CSS selector or @eN ref."),
+    ) -> None:
         """Highlight an element."""
         misc.highlight(selector)
 
     @app.command()
-    def read(selector: str = typer.Argument(None, help="Only this subtree (CSS selector).")) -> None:
+    def read(
+        selector: str = typer.Argument(None, help="Only this subtree (CSS selector)."),
+    ) -> None:
         """Read the current page as plain text."""
         print(misc.read_page(selector))
 
@@ -30,14 +34,22 @@ def register(app: typer.Typer) -> None:
         misc.tile_windows()
 
     @app.command(name="mfa-code")
-    def mfa_code_cmd(totp_key: str = typer.Argument(None, help="TOTP secret key (or configured default).")) -> None:
+    def mfa_code_cmd(
+        totp_key: str = typer.Argument(
+            None, help="TOTP secret key (or configured default)."
+        ),
+    ) -> None:
         """Generate a TOTP code for 2FA."""
         _print(misc.mfa_code(totp_key))
 
     @app.command(name="enter-mfa")
     def enter_mfa(
-        selector: str = typer.Argument(..., help="CSS selector or @eN ref for the code field."),
-        totp_key: str = typer.Argument(None, help="TOTP secret key (or configured default)."),
+        selector: str = typer.Argument(
+            ..., help="CSS selector or @eN ref for the code field."
+        ),
+        totp_key: str = typer.Argument(
+            None, help="TOTP secret key (or configured default)."
+        ),
     ) -> None:
         """Generate and enter a TOTP code into a field."""
         misc.enter_mfa(selector, totp_key)
@@ -45,7 +57,9 @@ def register(app: typer.Typer) -> None:
     @app.command(name="gui-hover-click")
     def gui_hover_click(
         hover_selector: str = typer.Argument(..., help="Element to hover over first."),
-        click_selector: str = typer.Argument(..., help="Element to click after hovering."),
+        click_selector: str = typer.Argument(
+            ..., help="Element to click after hovering."
+        ),
     ) -> None:
         """Hover then click via the real OS pointer (PyAutoGUI); needs --headed."""
         gui.gui_hover_and_click(hover_selector, click_selector)

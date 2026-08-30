@@ -25,11 +25,12 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 import mycdp
-import mycdp.accessibility  # noqa: F401 - not re-exported by mycdp/__init__.py
+import mycdp.accessibility
 from seleniumbase import sb_cdp
 from seleniumbase.core.sb_cdp import CDPMethods
 from seleniumbase.undetected.cdp_driver import cdp_util
@@ -252,12 +253,11 @@ def click(selector: str | None = None, text: str | None = None) -> None:
 def dblclick(selector: str) -> None:
     sel = resolve_selector(selector)
     js = (
-        "(() => { const el = document.querySelector(%s); "
-        "if (!el) throw new Error('Element not found: %s'); "
+        "(() => {{ const el = document.querySelector({}); "
+        "if (!el) throw new Error('Element not found: {}'); "
         "el.dispatchEvent(new MouseEvent('dblclick', "
-        "{bubbles: true, cancelable: true, view: window})); })()"
-        % (_js_str(sel), sel.replace("'", "\\'"))
-    )
+        "{{bubbles: true, cancelable: true, view: window}})); }})()"
+    ).format(_js_str(sel), sel.replace("'", "\\'"))
     with_driver(lambda d: d.evaluate(js))
 
 
@@ -336,11 +336,10 @@ def select_option(selector: str, values: list[str]) -> None:
     # No native multi-select helper - set .selected on each matching
     # <option> directly and fire one `change` event.
     js = (
-        "(() => { const el = document.querySelector(%s); "
-        "const wanted = new Set(%s); "
+        f"(() => {{ const el = document.querySelector({_js_str(sel)}); "
+        f"const wanted = new Set({json_module.dumps(list(values))}); "
         "for (const opt of el.options) opt.selected = wanted.has(opt.value); "
         "el.dispatchEvent(new Event('change', {bubbles: true})); })()"
-        % (_js_str(sel), json_module.dumps(list(values)))
     )
     with_driver(lambda d: d.evaluate(js))
 
@@ -479,9 +478,9 @@ def get_styles(selector: str, prop: str | None = None) -> str:
         )
     else:
         js = (
-            "(() => { const s = getComputedStyle(document.querySelector(%s)); "
+            f"(() => {{ const s = getComputedStyle(document.querySelector({_js_str(sel)})); "
             "const o = {}; for (const k of s) o[k] = s.getPropertyValue(k); "
-            "return JSON.stringify(o); })()" % _js_str(sel)
+            "return JSON.stringify(o); })()"
         )
     return with_driver(lambda d: d.evaluate(js))
 
@@ -528,7 +527,9 @@ def is_enabled(selector: str) -> bool:
 
 def screenshot(path: str | None = None) -> str:
     def _run(d: CDPMethods) -> str:
-        target = path or str(session.state_dir() / f"screenshot-{int(time.time() * 1000)}.png")
+        target = path or str(
+            session.state_dir() / f"screenshot-{int(time.time() * 1000)}.png"
+        )
         folder = os.path.dirname(target) or "."
         name = os.path.basename(target)
         d.save_screenshot(name, folder=folder)
@@ -850,12 +851,20 @@ def _find_ax_id_for_selector(
     described = _cdp_send(driver, mycdp.dom.describe_node(node_id=node_id))
     target_backend_id = int(described.backend_node_id)
     for ax_id, node in index.items():
-        if node.backend_dom_node_id is not None and int(node.backend_dom_node_id) == target_backend_id:
+        if (
+            node.backend_dom_node_id is not None
+            and int(node.backend_dom_node_id) == target_backend_id
+        ):
             return ax_id
     raise ValueError(f"No accessibility node found for selector: {selector!r}")
 
 
-def _iter_nodes(index: dict[str, _SnapshotNode], ax_id: str | None, raw_depth: int, depth_limit: int | None):
+def _iter_nodes(
+    index: dict[str, _SnapshotNode],
+    ax_id: str | None,
+    raw_depth: int,
+    depth_limit: int | None,
+):
     """DFS over the raw AX tree, yielding (raw_depth, node) pairs."""
     if ax_id is None or ax_id not in index:
         return
@@ -908,10 +917,10 @@ def _render(levels, hrefs: dict, as_json: bool) -> str:
     lines = []
     for item in items:
         indent = "  " * item["level"]
-        ref_part = f'{item["ref"]} ' if item["ref"] else ""
+        ref_part = f"{item['ref']} " if item["ref"] else ""
         name_part = f' "{item["name"]}"' if item["name"] else ""
         href_part = f' href="{item["href"]}"' if item["href"] else ""
-        lines.append(f'{indent}{ref_part}[{item["role"]}]{name_part}{href_part}')
+        lines.append(f"{indent}{ref_part}[{item['role']}]{name_part}{href_part}")
     return "\n".join(lines)
 
 
@@ -943,7 +952,11 @@ def snapshot(
         if not index:
             return "[]" if as_json else ""
 
-        root_id = _find_ax_id_for_selector(d, index, selector) if selector else _find_root(index)
+        root_id = (
+            _find_ax_id_for_selector(d, index, selector)
+            if selector
+            else _find_root(index)
+        )
         pairs = _iter_nodes(index, root_id, 0, depth)
         levels = _filter_and_level(pairs, interactive, compact)
 
@@ -972,7 +985,9 @@ def snapshot(
                 continue
             _cdp_send(
                 d,
-                mycdp.dom.set_attribute_value(node_id=node_ids[0], name=_REF_ATTR, value=node.ref),
+                mycdp.dom.set_attribute_value(
+                    node_id=node_ids[0], name=_REF_ATTR, value=node.ref
+                ),
             )
 
         hrefs: dict = {}

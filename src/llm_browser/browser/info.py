@@ -48,9 +48,9 @@ def get_styles(selector: str, prop: str | None = None) -> str:
         )
     else:
         js = (
-            "(() => { const s = getComputedStyle(document.querySelector(%s)); "
+            f"(() => {{ const s = getComputedStyle(document.querySelector({_js_str(sel)})); "
             "const o = {}; for (const k of s) o[k] = s.getPropertyValue(k); "
-            "return JSON.stringify(o); })()" % _js_str(sel)
+            "return JSON.stringify(o); })()"
         )
     return with_driver(lambda d: d.evaluate(js))
 

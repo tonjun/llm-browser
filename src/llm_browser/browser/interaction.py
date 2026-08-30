@@ -6,7 +6,12 @@ import json as json_module
 
 from seleniumbase.core.sb_cdp import CDPMethods
 
-from llm_browser.browser.core import _is_checked_safe, _js_str, resolve_selector, with_driver
+from llm_browser.browser.core import (
+    _is_checked_safe,
+    _js_str,
+    resolve_selector,
+    with_driver,
+)
 
 
 def click(selector: str | None = None, text: str | None = None) -> None:
@@ -25,12 +30,11 @@ def click(selector: str | None = None, text: str | None = None) -> None:
 def dblclick(selector: str) -> None:
     sel = resolve_selector(selector)
     js = (
-        "(() => { const el = document.querySelector(%s); "
-        "if (!el) throw new Error('Element not found: %s'); "
+        "(() => {{ const el = document.querySelector({}); "
+        "if (!el) throw new Error('Element not found: {}'); "
         "el.dispatchEvent(new MouseEvent('dblclick', "
-        "{bubbles: true, cancelable: true, view: window})); })()"
-        % (_js_str(sel), sel.replace("'", "\\'"))
-    )
+        "{{bubbles: true, cancelable: true, view: window}})); }})()"
+    ).format(_js_str(sel), sel.replace("'", "\\'"))
     with_driver(lambda d: d.evaluate(js))
 
 
@@ -96,11 +100,10 @@ def select_option(selector: str, values: list[str]) -> None:
     # No native multi-select helper - set .selected on each matching
     # <option> directly and fire one `change` event.
     js = (
-        "(() => { const el = document.querySelector(%s); "
-        "const wanted = new Set(%s); "
+        f"(() => {{ const el = document.querySelector({_js_str(sel)}); "
+        f"const wanted = new Set({json_module.dumps(list(values))}); "
         "for (const opt of el.options) opt.selected = wanted.has(opt.value); "
         "el.dispatchEvent(new Event('change', {bubbles: true})); })()"
-        % (_js_str(sel), json_module.dumps(list(values)))
     )
     with_driver(lambda d: d.evaluate(js))
 

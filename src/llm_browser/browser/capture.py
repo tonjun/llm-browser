@@ -13,7 +13,9 @@ from llm_browser.browser.core import with_driver
 
 def screenshot(path: str | None = None) -> str:
     def _run(d: CDPMethods) -> str:
-        target = path or str(session.state_dir() / f"screenshot-{int(time.time() * 1000)}.png")
+        target = path or str(
+            session.state_dir() / f"screenshot-{int(time.time() * 1000)}.png"
+        )
         folder = os.path.dirname(target) or "."
         name = os.path.basename(target)
         d.save_screenshot(name, folder=folder)
