@@ -121,12 +121,26 @@ def _ensure_target(state: session.SessionState) -> None:
         requests.put(f"{base}/json/new", timeout=5)
 
 
+def ensure_session(headless: bool = False) -> session.SessionState:
+    """Start the daemon if it's not already running, and return its state.
+
+    Composes the same two steps ``open_url`` uses below: spawn (or reuse)
+    the daemon, then make sure its Chrome has at least one open tab.
+    """
+    state = _ensure_daemon(headless=headless)
+    _ensure_target(state)
+    return state
+
+
 def open_url(url: str, headless: bool = False) -> None:
     """Open a URL in the persistent browser session, starting it if needed."""
     existing = session.is_daemon_alive(session.read_state())
     state = _ensure_daemon(headless=headless)
     if existing and headless:
-        print("Note: --headless is ignored; a session is already running.")
+        print(
+            "Note: --headless is ignored; a session is already running.",
+            file=sys.stderr,
+        )
 
     _ensure_target(state)
     driver = sb_cdp.Chrome(host=state.host, port=state.port)

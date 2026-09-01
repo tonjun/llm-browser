@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import sys
+
 from seleniumbase.core.sb_cdp import CDPMethods
 
 from llm_browser import session
-from llm_browser.browser import extract
+from llm_browser.browser import core, extract
 from llm_browser.browser.core import with_driver
 
 
@@ -24,7 +26,17 @@ def _mark_active(d: CDPMethods):
     return tab
 
 
-def tab_new(url: str | None = None, label: str | None = None) -> None:
+def tab_new(
+    url: str | None = None, label: str | None = None, headless: bool = False
+) -> None:
+    existing = session.is_daemon_alive(session.read_state())
+    core.ensure_session(headless=headless)
+    if existing and headless:
+        print(
+            "Note: --headless is ignored; a session is already running.",
+            file=sys.stderr,
+        )
+
     def _run(d: CDPMethods) -> None:
         if label is not None and label in session.read_labels():
             raise ValueError(f"Label {label!r} is already in use.")
@@ -39,11 +51,20 @@ def tab_new(url: str | None = None, label: str | None = None) -> None:
     with_driver(_run)
 
 
-def tab_new_extract(url: str, markdown: bool = True, close: bool = False) -> str:
+def tab_new_extract(
+    url: str, markdown: bool = True, close: bool = False, headless: bool = False
+) -> str:
     """Open ``url`` in a new tab, extract its main content, and optionally
     close the tab again. See ``extract.extract_content`` for the extraction
     logic itself; this just composes ``tab_new`` + extract (+ close) since
     ``with_driver`` always attaches to the newest tab."""
+    existing = session.is_daemon_alive(session.read_state())
+    core.ensure_session(headless=headless)
+    if existing and headless:
+        print(
+            "Note: --headless is ignored; a session is already running.",
+            file=sys.stderr,
+        )
 
     def _open(d: CDPMethods) -> None:
         d.open_new_tab(url)
