@@ -28,6 +28,11 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
         label: str = typer.Option(
             None, "--label", help="Assign a label to the new tab."
         ),
+        headless: bool = typer.Option(
+            False,
+            "--headless",
+            help="Run headless if a new session needs to be started.",
+        ),
     ) -> None:
         """Open a new tab."""
         if extract:
@@ -35,9 +40,13 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
                 raise typer.BadParameter("URL is required when using --extract.")
             if label:
                 raise typer.BadParameter("--label can't be combined with --extract.")
-            print(tabs.tab_new_extract(url, markdown=not text, close=close))
+            print(
+                tabs.tab_new_extract(
+                    url, markdown=not text, close=close, headless=headless
+                )
+            )
         else:
-            tabs.tab_new(url, label=label)
+            tabs.tab_new(url, label=label, headless=headless)
 
     @tab_app.command("list")
     def tab_list() -> None:
