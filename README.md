@@ -114,6 +114,7 @@ the persistent daemon works and `llm-browser close` to shut it down.
 ```bash
 llm-browser search reddit "your query"     # search a known engine/site
 llm-browser extract                        # main content of the open page, as Markdown
+llm-browser tab new https://example.com --extract --close  # open a URL, extract as Markdown, close the tab
 llm-browser save-markdown notes.md         # save the open page's main content as Markdown to disk
 llm-browser read https://example.com --markdown  # fetch a URL directly, no browser tab
 llm-browser scroll down --until-count 50 --selector ".item"  # infinite-scroll pagination

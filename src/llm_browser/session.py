@@ -41,6 +41,14 @@ def lock_file() -> Path:
     return state_dir() / "session.lock"
 
 
+def labels_file() -> Path:
+    return state_dir() / "labels.json"
+
+
+def active_tab_file() -> Path:
+    return state_dir() / "active_tab"
+
+
 @dataclasses.dataclass
 class SessionState:
     pid: int
@@ -67,6 +75,55 @@ def write_state(pid: int, host: str, port: int) -> None:
 def clear_state() -> None:
     with contextlib.suppress(FileNotFoundError):
         session_file().unlink()
+
+
+def read_labels() -> dict[str, str]:
+    """Return the tab label -> CDP targetId mapping, or ``{}`` if none.
+
+    Kept in its own file rather than folded into ``session.json`` so that
+    respawning the daemon (which rewrites ``session.json`` via
+    ``write_state``) doesn't need to round-trip label data it has nothing
+    to do with.
+    """
+    try:
+        return json.loads(labels_file().read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def write_labels(labels: dict[str, str]) -> None:
+    labels_file().write_text(json.dumps(labels))
+
+
+def clear_labels() -> None:
+    with contextlib.suppress(FileNotFoundError):
+        labels_file().unlink()
+
+
+def read_active_tab() -> str | None:
+    """Return the CDP targetId of the tab commands should attach to next.
+
+    Every ``llm-browser`` invocation is a separate process that reattaches
+    to the daemon's shared Chrome from scratch (see ``browser/core.py``'s
+    ``_attach``), so without this, a `tab switch` in one invocation had no
+    way to affect which tab the *next* invocation (e.g. `extract`) landed
+    on - it just always picked the most-recently-opened tab. Stored as a
+    plain string rather than JSON since it's a single scalar.
+    """
+    try:
+        target_id = active_tab_file().read_text().strip()
+    except FileNotFoundError:
+        return None
+    return target_id or None
+
+
+def write_active_tab(target_id: str) -> None:
+    active_tab_file().write_text(target_id)
+
+
+def clear_active_tab() -> None:
+    with contextlib.suppress(FileNotFoundError):
+        active_tab_file().unlink()
 
 
 def _pid_alive(pid: int) -> bool:

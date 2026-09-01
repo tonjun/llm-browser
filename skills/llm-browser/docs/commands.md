@@ -154,21 +154,45 @@ SeleniumBase method for either store and go through a small eval.
 ## Tabs & windows
 
 ```bash
-llm-browser tab new [url]        # Open a new tab
-llm-browser tab list             # List open tabs (index, url, title)
-llm-browser tab switch <index>   # Switch to a tab by index (-1 = newest)
-llm-browser tab close [index]    # Close a tab (default: current)
+llm-browser tab new [url]              # Open a new tab
+llm-browser tab new [url] --label docs # Open a new tab and label it "docs"
+llm-browser tab new <url> --extract [--text] [--close]
+                                  # Open a tab, wait for it to load, print its
+                                  # main content as Markdown (or --text); --close
+                                  # closes the tab again after extracting
+llm-browser tab list             # List open tabs (index, target_id, label, url, title)
+llm-browser tab switch <index|label>   # Switch to a tab by index (-1 = newest) or label
+llm-browser tab close [index|label]    # Close a tab (default: current)
 llm-browser window new [url]     # Open a new window
 ```
 
-**Important:** there is no persistent `t1`/`t2`/label system like
-agent-browser's. Every command attaches to the daemon's browser fresh
-and independently picks its most-recently-opened tab (mirroring
-SeleniumBase's own default) - `tab switch` only affects the *current*
-command's own attach, not any tab state that persists to the next CLI
-invocation. Treat multi-tab workflows as best-effort until/unless the
-daemon itself tracks an "active tab" (see
-[Recommended next steps](#recommended-next-steps)).
+**Labels:** `--label` on `tab new` assigns a name you can later pass to
+`tab switch`/`tab close` instead of an index. Labels are stored in
+`~/.llm-browser/labels.json`, keyed on the tab's CDP `targetId`, which
+stays stable for as long as that tab is open - so a label is the one
+thing that *does* persist correctly across separate CLI invocations.
+Labels must be unique (creating a second tab with an existing label
+errors), are never auto-generated or rewritten, and are cleared when the
+session closes (`llm-browser close`) since a fresh browser means fresh
+targetIds.
+
+**Active tab:** every command attaches to the daemon's browser fresh, but
+the daemon remembers which tab was last made active (via `tab new` or
+`tab switch`) in `~/.llm-browser/active_tab`, keyed on the same
+`targetId`. So `llm-browser tab switch docs && llm-browser extract` now
+extracts the `docs` tab, not just whichever tab happens to be newest -
+`tab switch`/`tab new` set the tab every later command (`extract`,
+`click`, `snapshot`, ...) operates on until something switches again.
+Closing that tab clears the pointer, falling back to the newest
+remaining tab.
+
+**Important:** there is still no persistent `t1`/`t2` stable-index
+counter like agent-browser's. `tab list`'s plain integer indices are
+recomputed fresh on every call (mirroring SeleniumBase's own default),
+so an index from one `tab list` call isn't guaranteed to point at the
+same tab in a later call if tabs were opened or closed in between - use
+a label instead when you need a reference that outlives a single
+command.
 
 ## Snapshot & refs
 
@@ -277,9 +301,6 @@ Not part of this pass, but worth picking up next:
   tag the match, and delegate to the existing action commands.
 - **Multi-session support** (`--session <name>`), generalizing
   `session.py`/`daemon.py` beyond today's single global daemon.
-- **Persistent active-tab tracking** in the daemon, so `tab switch`
-  actually affects later CLI invocations instead of only the command
-  that called it (see the caveat under [Tabs & windows](#tabs--windows)).
 - Everything under [Not supported (yet)](#not-supported-yet) above,
   most of which would need raw CDP `Network`/`Emulation`/`Input`
   domain work similar to what `snapshot` already does for

@@ -147,6 +147,8 @@ def close_session() -> bool:
     state = session.read_state()
     if not session.is_daemon_alive(state):
         session.clear_state()
+        session.clear_labels()
+        session.clear_active_tab()
         return False
 
     os.kill(state.pid, signal.SIGTERM)
@@ -163,6 +165,10 @@ def close_session() -> bool:
         _kill_daemon_group(state.pid, signal.SIGKILL)
         session.clear_state()
 
+    # A closed session means every tab (and its CDP targetId) is gone, so
+    # any label or active-tab pointer would be meaningless in the next one.
+    session.clear_labels()
+    session.clear_active_tab()
     return True
 
 
@@ -171,6 +177,27 @@ def close_session() -> bool:
 # to the daemon's shared Chrome, call one or more sb_cdp methods, return" -
 # never a driver.quit(), for the same reason as open_url() above.
 # --------------------------------------------------------------------------
+
+
+def _active_page(driver):
+    """Pick the tab an attach should operate on.
+
+    Defaults to the most-recently-opened tab (``driver.tabs[-1]``), same
+    as always, but honors a targetId previously recorded by ``tab switch``
+    (see ``browser/tabs.py``) so that switching tabs in one CLI invocation
+    actually carries over to the next one - without this, `tab switch`
+    only affected the process that ran it, since every invocation reattaches
+    from scratch and re-picks the newest tab.
+    """
+    target_id = session.read_active_tab()
+    if target_id is not None:
+        for tab in driver.tabs:
+            if getattr(tab.target, "target_id", None) == target_id:
+                return tab
+        # The tab we were pointed at is gone (closed some other way) -
+        # drop the stale pointer and fall through to the default below.
+        session.clear_active_tab()
+    return driver.tabs[-1]
 
 
 def _attach() -> CDPMethods:
@@ -194,7 +221,7 @@ def _attach() -> CDPMethods:
     _ensure_target(state)
     loop = asyncio.new_event_loop()
     driver = cdp_util.start_sync(host=state.host, port=state.port, loop=loop)
-    page = driver.tabs[-1]
+    page = _active_page(driver)
     # Tab.closed just checks "is the websocket missing/closed", and the
     # websocket is only lazily opened on first send() - so a freshly
     # attached tab reads as "closed" until something sends on it. A few
