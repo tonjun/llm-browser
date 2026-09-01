@@ -155,6 +155,10 @@ SeleniumBase method for either store and go through a small eval.
 
 ```bash
 llm-browser tab new [url]        # Open a new tab
+llm-browser tab new <url> --extract [--text] [--close]
+                                  # Open a tab, wait for it to load, print its
+                                  # main content as Markdown (or --text); --close
+                                  # closes the tab again after extracting
 llm-browser tab list             # List open tabs (index, url, title)
 llm-browser tab switch <index>   # Switch to a tab by index (-1 = newest)
 llm-browser tab close [index]    # Close a tab (default: current)

@@ -12,9 +12,27 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
     @tab_app.command("new")
     def tab_new(
         url: str = typer.Argument(None, help="URL to open in the new tab."),
+        extract: bool = typer.Option(
+            False,
+            "--extract",
+            help="Extract the page's main content as Markdown after opening.",
+        ),
+        text: bool = typer.Option(
+            False, "--text", help="With --extract, plain text instead of Markdown."
+        ),
+        close: bool = typer.Option(
+            False,
+            "--close",
+            help="With --extract, close the tab again after extracting.",
+        ),
     ) -> None:
         """Open a new tab."""
-        tabs.tab_new(url)
+        if extract:
+            if not url:
+                raise typer.BadParameter("URL is required when using --extract.")
+            print(tabs.tab_new_extract(url, markdown=not text, close=close))
+        else:
+            tabs.tab_new(url)
 
     @tab_app.command("list")
     def tab_list() -> None:

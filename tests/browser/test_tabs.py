@@ -68,3 +68,28 @@ class TestTabClose:
 def test_window_new(d):
     tabs.window_new("https://x")
     d.open_new_window.assert_called_once_with("https://x")
+
+
+class TestTabNewExtract:
+    @pytest.fixture(autouse=True)
+    def _extract(self, d, monkeypatch):
+        # tab_new_extract calls extract.extract_content(), which attaches
+        # via its own `with_driver` - point it at the same mock driver.
+        monkeypatch.setattr(tabs.extract, "with_driver", lambda fn: fn(d))
+        monkeypatch.setattr(
+            tabs.extract.trafilatura, "extract", lambda *a, **k: "# Title\n\nBody."
+        )
+        return d
+
+    def test_opens_and_extracts(self, d):
+        result = tabs.tab_new_extract("https://example.com")
+        d.open_new_tab.assert_called_once_with("https://example.com")
+        assert result == "# Title\n\nBody."
+
+    def test_does_not_close_by_default(self, d):
+        tabs.tab_new_extract("https://example.com")
+        d.close_active_tab.assert_not_called()
+
+    def test_close_true_closes_after_extracting(self, d):
+        tabs.tab_new_extract("https://example.com", close=True)
+        d.close_active_tab.assert_called_once()

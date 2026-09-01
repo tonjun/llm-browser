@@ -263,6 +263,41 @@ class TestCookiesAndStorage:
 
 
 class TestTabsAndWindows:
+    def test_tab_new(self, monkeypatch):
+        tab_new = MagicMock()
+        monkeypatch.setattr(tabs, "tab_new", tab_new)
+        result = runner.invoke(app, ["tab", "new", "https://x"])
+        assert result.exit_code == 0
+        tab_new.assert_called_once_with("https://x")
+
+    def test_tab_new_extract_defaults_to_markdown(self, monkeypatch):
+        tab_new_extract = MagicMock(return_value="# Title")
+        monkeypatch.setattr(tabs, "tab_new_extract", tab_new_extract)
+        result = runner.invoke(app, ["tab", "new", "https://x", "--extract"])
+        assert result.exit_code == 0
+        assert result.output.strip() == "# Title"
+        tab_new_extract.assert_called_once_with(
+            "https://x", markdown=True, close=False
+        )
+
+    def test_tab_new_extract_text_and_close_flags(self, monkeypatch):
+        tab_new_extract = MagicMock(return_value="Title")
+        monkeypatch.setattr(tabs, "tab_new_extract", tab_new_extract)
+        result = runner.invoke(
+            app, ["tab", "new", "https://x", "--extract", "--text", "--close"]
+        )
+        assert result.exit_code == 0
+        tab_new_extract.assert_called_once_with(
+            "https://x", markdown=False, close=True
+        )
+
+    def test_tab_new_extract_without_url_errors(self, monkeypatch):
+        tab_new_extract = MagicMock()
+        monkeypatch.setattr(tabs, "tab_new_extract", tab_new_extract)
+        result = runner.invoke(app, ["tab", "new", "--extract"])
+        assert result.exit_code != 0
+        tab_new_extract.assert_not_called()
+
     def test_tab_list(self, monkeypatch):
         monkeypatch.setattr(tabs, "tab_list", lambda: [{"index": 0}])
         result = runner.invoke(app, ["tab", "list"])
