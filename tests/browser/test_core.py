@@ -341,9 +341,15 @@ class TestCloseSession:
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
         clear = MagicMock()
         monkeypatch.setattr(session, "clear_state", clear)
+        clear_labels = MagicMock()
+        monkeypatch.setattr(session, "clear_labels", clear_labels)
+        clear_active = MagicMock()
+        monkeypatch.setattr(session, "clear_active_tab", clear_active)
 
         assert core.close_session() is False
         clear.assert_called_once()
+        clear_labels.assert_called_once()
+        clear_active.assert_called_once()
 
     def test_sends_sigterm_and_returns_true_on_clean_shutdown(self, monkeypatch):
         state = session.SessionState(pid=42, host="h", port=1)
@@ -351,6 +357,8 @@ class TestCloseSession:
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
         kill = MagicMock()
         monkeypatch.setattr(core.os, "kill", kill)
+        monkeypatch.setattr(session, "clear_labels", MagicMock())
+        monkeypatch.setattr(session, "clear_active_tab", MagicMock())
 
         # First call to read_state() in close_session() returns state,
         # the polling loop's calls (via session.read_state) return None
@@ -378,16 +386,67 @@ class TestCloseSession:
         monkeypatch.setattr(core, "_kill_daemon_group", kill_group)
         clear = MagicMock()
         monkeypatch.setattr(session, "clear_state", clear)
+        monkeypatch.setattr(session, "clear_labels", MagicMock())
+        monkeypatch.setattr(session, "clear_active_tab", MagicMock())
 
         result = core.close_session()
         assert result is True
         kill_group.assert_called_once_with(42, signal.SIGKILL)
         clear.assert_called_once()
 
+    def test_clears_labels_and_active_tab_on_clean_shutdown(self, monkeypatch):
+        state = session.SessionState(pid=42, host="h", port=1)
+        monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
+        monkeypatch.setattr(core.os, "kill", MagicMock())
+
+        calls = {"n": 0}
+
+        def fake_read_state():
+            calls["n"] += 1
+            return state if calls["n"] == 1 else None
+
+        monkeypatch.setattr(session, "read_state", fake_read_state)
+        clear_labels = MagicMock()
+        monkeypatch.setattr(session, "clear_labels", clear_labels)
+        clear_active = MagicMock()
+        monkeypatch.setattr(session, "clear_active_tab", clear_active)
+
+        core.close_session()
+        clear_labels.assert_called_once()
+        clear_active.assert_called_once()
+
 
 # --------------------------------------------------------------------------
 # _attach / with_driver
 # --------------------------------------------------------------------------
+
+
+class TestActivePage:
+    def test_defaults_to_newest_tab_when_no_pointer(self, monkeypatch):
+        monkeypatch.setattr(session, "read_active_tab", lambda: None)
+        driver = MagicMock()
+        t0, t1 = MagicMock(), MagicMock()
+        driver.tabs = [t0, t1]
+        assert core._active_page(driver) is t1
+
+    def test_returns_tab_matching_active_pointer(self, monkeypatch):
+        monkeypatch.setattr(session, "read_active_tab", lambda: "t0")
+        driver = MagicMock()
+        t0 = MagicMock(target=MagicMock(target_id="t0"))
+        t1 = MagicMock(target=MagicMock(target_id="t1"))
+        driver.tabs = [t0, t1]
+        assert core._active_page(driver) is t0
+
+    def test_falls_back_and_clears_stale_pointer(self, monkeypatch):
+        monkeypatch.setattr(session, "read_active_tab", lambda: "gone")
+        clear = MagicMock()
+        monkeypatch.setattr(session, "clear_active_tab", clear)
+        driver = MagicMock()
+        t0 = MagicMock(target=MagicMock(target_id="t0"))
+        t1 = MagicMock(target=MagicMock(target_id="t1"))
+        driver.tabs = [t0, t1]
+        assert core._active_page(driver) is t1
+        clear.assert_called_once()
 
 
 class TestAttach:
@@ -401,6 +460,7 @@ class TestAttach:
         state = session.SessionState(pid=1, host="h", port=1)
         monkeypatch.setattr(session, "read_state", lambda: state)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
+        monkeypatch.setattr(session, "read_active_tab", lambda: None)
         monkeypatch.setattr(core, "_ensure_target", MagicMock())
 
         from unittest.mock import AsyncMock
