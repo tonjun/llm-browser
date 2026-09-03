@@ -293,7 +293,7 @@ class TestTabsAndWindows:
         assert result.exit_code == 0
         assert result.output.strip() == "# Title"
         tab_new_extract.assert_called_once_with(
-            "https://x", markdown=True, close=False, headless=False
+            "https://x", markdown=True, close=False, headless=False, snapshot=False
         )
 
     def test_tab_new_extract_text_and_close_flags(self, monkeypatch):
@@ -304,8 +304,28 @@ class TestTabsAndWindows:
         )
         assert result.exit_code == 0
         tab_new_extract.assert_called_once_with(
-            "https://x", markdown=False, close=True, headless=False
+            "https://x", markdown=False, close=True, headless=False, snapshot=False
         )
+
+    def test_tab_new_extract_snapshot_flag(self, monkeypatch):
+        tab_new_extract = MagicMock(return_value="# Title")
+        monkeypatch.setattr(tabs, "tab_new_extract", tab_new_extract)
+        result = runner.invoke(
+            app, ["tab", "new", "https://x", "--extract", "--snapshot"]
+        )
+        assert result.exit_code == 0
+        tab_new_extract.assert_called_once_with(
+            "https://x", markdown=True, close=False, headless=False, snapshot=True
+        )
+
+    def test_tab_new_extract_snapshot_and_text_errors(self, monkeypatch):
+        tab_new_extract = MagicMock()
+        monkeypatch.setattr(tabs, "tab_new_extract", tab_new_extract)
+        result = runner.invoke(
+            app, ["tab", "new", "https://x", "--extract", "--snapshot", "--text"]
+        )
+        assert result.exit_code != 0
+        tab_new_extract.assert_not_called()
 
     def test_tab_new_extract_without_url_errors(self, monkeypatch):
         tab_new_extract = MagicMock()
@@ -369,8 +389,30 @@ class TestSnapshot:
             "selector": "#a",
             "with_urls": False,
             "as_json": True,
+            "as_markdown": False,
         }
         assert result.output.strip() == "tree"
+
+    def test_snapshot_markdown_flag(self, monkeypatch):
+        captured = {}
+
+        def fake_snapshot(**kwargs):
+            captured.update(kwargs)
+            return "# Title"
+
+        monkeypatch.setattr(snapshot_mod, "snapshot", fake_snapshot)
+        result = runner.invoke(app, ["snapshot", "--markdown"])
+        assert result.exit_code == 0
+        assert captured["as_markdown"] is True
+        assert captured["as_json"] is False
+        assert result.output.strip() == "# Title"
+
+    def test_snapshot_markdown_and_json_errors(self, monkeypatch):
+        fake_snapshot = MagicMock()
+        monkeypatch.setattr(snapshot_mod, "snapshot", fake_snapshot)
+        result = runner.invoke(app, ["snapshot", "--markdown", "--json"])
+        assert result.exit_code != 0
+        fake_snapshot.assert_not_called()
 
 
 class TestMisc:

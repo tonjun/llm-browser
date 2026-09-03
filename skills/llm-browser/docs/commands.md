@@ -160,6 +160,11 @@ llm-browser tab new <url> --extract [--text] [--close]
                                   # Open a tab, wait for it to load, print its
                                   # main content as Markdown (or --text); --close
                                   # closes the tab again after extracting
+llm-browser tab new <url> --extract --snapshot [--close]
+                                  # Same, but content comes from an accessibility-
+                                  # tree snapshot rendered as Markdown instead of
+                                  # trafilatura extraction (see Snapshot & refs
+                                  # below); can't be combined with --text
 llm-browser tab list             # List open tabs (index, target_id, label, url, title)
 llm-browser tab switch <index|label>   # Switch to a tab by index (-1 = newest) or label
 llm-browser tab close [index|label]    # Close a tab (default: current)
@@ -197,7 +202,7 @@ command.
 ## Snapshot & refs
 
 ```bash
-llm-browser snapshot [-i] [-c] [-d N] [-s <css>] [-u] [--json]
+llm-browser snapshot [-i] [-c] [-d N] [-s <css>] [-u] [--json] [-m]
 ```
 
 - `-i, --interactive` - only interactive elements (links, buttons,
@@ -207,6 +212,12 @@ llm-browser snapshot [-i] [-c] [-d N] [-s <css>] [-u] [--json]
 - `-s, --selector <css>` - scope to the subtree rooted at a CSS selector
 - `-u, --urls` - include `href` on links
 - `--json` - machine-readable output
+- `-m, --markdown` - render the tree as Markdown (headings, links, list
+  items, paragraphs) instead of the default tree format; can't be
+  combined with `--json`. Nested list items (e.g. comment replies on a
+  discussion thread) render as nested blockquotes (`>`, `> >`, `> > >`, ...)
+  instead of dash bullets, one extra `>` per level of reply nesting, so
+  threads stay readable
 
 See [`snapshot-and-refs.md`](snapshot-and-refs.md) for how `@eN` refs
 work, how they're tagged onto elements, and their caveats (staleness on

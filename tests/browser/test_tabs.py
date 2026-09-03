@@ -219,3 +219,19 @@ class TestTabNewExtract:
     def test_close_true_closes_after_extracting(self, d):
         tabs.tab_new_extract("https://example.com", close=True)
         d.close_active_tab.assert_called_once()
+
+    def test_snapshot_true_uses_snapshot_markdown_instead_of_extract(
+        self, d, monkeypatch
+    ):
+        fake_snapshot = MagicMock(return_value="# Snapshot Title")
+        monkeypatch.setattr(tabs.snapshot_, "snapshot", fake_snapshot)
+        extract_content = MagicMock()
+        monkeypatch.setattr(tabs.extract, "extract_content", extract_content)
+
+        result = tabs.tab_new_extract("https://example.com", snapshot=True)
+
+        fake_snapshot.assert_called_once_with(
+            compact=True, with_urls=True, as_markdown=True
+        )
+        extract_content.assert_not_called()
+        assert result == "# Snapshot Title"

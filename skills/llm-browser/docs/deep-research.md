@@ -51,7 +51,11 @@ uv run llm-browser search reddit "your query"
 - **Comment threads are lazy-loaded and often collapsed.** A single
   `snapshot -i` on a post page won't surface nested/"load more comments"
   branches — click the "load more comments" links (`click --text "load
-  more comments"`) or walk `.comment` nodes via `eval` after scrolling.
+  more comments"`) to expand them first. Once expanded, `snapshot -m`
+  renders nested replies as nested blockquotes (`>`, `> >`, ...) so the
+  thread structure stays readable; if a page's comments aren't exposed as
+  nested list items in the accessibility tree, fall back to walking
+  `.comment` nodes via `eval` instead.
 - No login is required for reading public posts/comments, but heavy,
   fast-paced scraping will get rate-limited or soft-blocked — pace requests
   and prefer the [official Reddit API](https://www.reddit.com/dev/api/)

@@ -8,6 +8,7 @@ from seleniumbase.core.sb_cdp import CDPMethods
 
 from llm_browser import session
 from llm_browser.browser import core, extract
+from llm_browser.browser import snapshot as snapshot_
 from llm_browser.browser.core import with_driver
 
 
@@ -52,12 +53,18 @@ def tab_new(
 
 
 def tab_new_extract(
-    url: str, markdown: bool = True, close: bool = False, headless: bool = False
+    url: str,
+    markdown: bool = True,
+    close: bool = False,
+    headless: bool = False,
+    snapshot: bool = False,
 ) -> str:
     """Open ``url`` in a new tab, extract its main content, and optionally
-    close the tab again. See ``extract.extract_content`` for the extraction
-    logic itself; this just composes ``tab_new`` + extract (+ close) since
-    ``with_driver`` always attaches to the newest tab."""
+    close the tab again. With ``snapshot=True``, content comes from an
+    accessibility-tree snapshot rendered as Markdown (see
+    ``browser.snapshot.snapshot``) instead of the default trafilatura-based
+    ``extract.extract_content``. This just composes ``tab_new`` + extract
+    (+ close) since ``with_driver`` always attaches to the newest tab."""
     existing = session.is_daemon_alive(session.read_state())
     core.ensure_session(headless=headless)
     if existing and headless:
@@ -72,7 +79,10 @@ def tab_new_extract(
         d.sleep(2)
 
     with_driver(_open)
-    content = extract.extract_content(markdown=markdown)
+    if snapshot:
+        content = snapshot_.snapshot(compact=True, with_urls=True, as_markdown=True)
+    else:
+        content = extract.extract_content(markdown=markdown)
     if close:
         tab_close()
     return content
