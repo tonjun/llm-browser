@@ -268,14 +268,14 @@ class TestTabsAndWindows:
         monkeypatch.setattr(tabs, "tab_new", tab_new)
         result = runner.invoke(app, ["tab", "new", "https://x"])
         assert result.exit_code == 0
-        tab_new.assert_called_once_with("https://x", label=None)
+        tab_new.assert_called_once_with("https://x", label=None, headless=False)
 
     def test_tab_new_with_label(self, monkeypatch):
         tab_new = MagicMock()
         monkeypatch.setattr(tabs, "tab_new", tab_new)
         result = runner.invoke(app, ["tab", "new", "https://x", "--label", "docs"])
         assert result.exit_code == 0
-        tab_new.assert_called_once_with("https://x", label="docs")
+        tab_new.assert_called_once_with("https://x", label="docs", headless=False)
 
     def test_tab_new_extract_and_label_errors(self, monkeypatch):
         tab_new_extract = MagicMock()
@@ -293,7 +293,7 @@ class TestTabsAndWindows:
         assert result.exit_code == 0
         assert result.output.strip() == "# Title"
         tab_new_extract.assert_called_once_with(
-            "https://x", markdown=True, close=False
+            "https://x", markdown=True, close=False, headless=False
         )
 
     def test_tab_new_extract_text_and_close_flags(self, monkeypatch):
@@ -304,7 +304,7 @@ class TestTabsAndWindows:
         )
         assert result.exit_code == 0
         tab_new_extract.assert_called_once_with(
-            "https://x", markdown=False, close=True
+            "https://x", markdown=False, close=True, headless=False
         )
 
     def test_tab_new_extract_without_url_errors(self, monkeypatch):

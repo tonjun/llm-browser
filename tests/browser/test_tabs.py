@@ -13,6 +13,10 @@ from llm_browser.browser import tabs
 def d(monkeypatch):
     driver = MagicMock()
     monkeypatch.setattr(tabs, "with_driver", lambda fn: fn(driver))
+    # tab_new/tab_new_extract call core.ensure_session() before attaching -
+    # without this, the real one runs and spawns an actual daemon + Chrome
+    # window on the test machine.
+    monkeypatch.setattr(tabs.core, "ensure_session", MagicMock())
     return driver
 
 

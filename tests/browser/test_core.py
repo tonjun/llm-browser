@@ -309,8 +309,8 @@ class TestOpenUrl:
 
         core.open_url("https://example.com", headless=True)
 
-        out = capsys.readouterr().out
-        assert "Note: --headless is ignored" in out
+        err = capsys.readouterr().err
+        assert "Note: --headless is ignored" in err
 
     def test_no_warning_when_starting_fresh_headless(self, monkeypatch, capsys):
         # No session running yet, so "existing" is False - no warning even

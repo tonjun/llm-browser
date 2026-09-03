@@ -21,6 +21,15 @@ def extract_content(markdown: bool = True) -> str:
         url = d.get_current_url()
         fmt = "markdown" if markdown else "txt"
         extracted = trafilatura.extract(html, url=url, output_format=fmt)
+        # trafilatura's default fallback extractors (readability-lxml,
+        # justext) can badly mis-segment heavily-nested, boilerplate-heavy
+        # pages (e.g. old.reddit.com threads), returning a short excerpt
+        # that skips most of the actual content. Its own "fast" algorithm
+        # handles those pages correctly, so compare the two and keep
+        # whichever is longer.
+        fast = trafilatura.extract(html, url=url, output_format=fmt, fast=True)
+        if fast is not None and (extracted is None or len(fast) > len(extracted)):
+            extracted = fast
         if extracted is not None:
             return extracted
         # Fall back to plain text if trafilatura can't find a main-content

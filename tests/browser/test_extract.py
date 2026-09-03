@@ -22,7 +22,7 @@ def d(monkeypatch):
 def test_extract_markdown_default(d, monkeypatch):
     calls = {}
 
-    def fake_extract(html, url=None, output_format=None):
+    def fake_extract(html, url=None, output_format=None, fast=False):
         calls["output_format"] = output_format
         return "# Title\n\nBody."
 
@@ -35,7 +35,7 @@ def test_extract_markdown_default(d, monkeypatch):
 def test_extract_text_mode(d, monkeypatch):
     calls = {}
 
-    def fake_extract(html, url=None, output_format=None):
+    def fake_extract(html, url=None, output_format=None, fast=False):
         calls["output_format"] = output_format
         return "Title Body."
 
@@ -43,6 +43,19 @@ def test_extract_text_mode(d, monkeypatch):
     result = extract.extract_content(markdown=False)
     assert result == "Title Body."
     assert calls["output_format"] == "txt"
+
+
+def test_extract_prefers_longer_of_default_and_fast(d, monkeypatch):
+    """Guards against trafilatura's fallback extractors mis-segmenting
+    boilerplate-heavy pages (e.g. old.reddit.com) into a short excerpt: the
+    fast-mode result should win when it's longer."""
+
+    def fake_extract(html, url=None, output_format=None, fast=False):
+        return "long content, much longer" if fast else "short"
+
+    monkeypatch.setattr(extract.trafilatura, "extract", fake_extract)
+    result = extract.extract_content()
+    assert result == "long content, much longer"
 
 
 def test_extract_falls_back_to_page_text(d, monkeypatch):
