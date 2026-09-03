@@ -342,6 +342,179 @@ class TestRender:
         assert data[0]["ref"] is None
 
 
+class TestHeadingLevel:
+    def test_defaults_to_1_when_no_level_property(self):
+        node = snap._SnapshotNode("1", "heading", "Title", 1)
+        assert snap._heading_level(node) == 1
+
+    def test_reads_level_property(self):
+        node = snap._SnapshotNode(
+            "1", "heading", "Title", 1, properties=[("level", "3")]
+        )
+        assert snap._heading_level(node) == 3
+
+    def test_clamps_to_1_through_6(self):
+        node = snap._SnapshotNode(
+            "1", "heading", "Title", 1, properties=[("level", "9")]
+        )
+        assert snap._heading_level(node) == 6
+
+
+class TestRenderMarkdown:
+    def test_heading_renders_with_hashes(self):
+        node = snap._SnapshotNode(
+            "1", "heading", "Title", 1, properties=[("level", "2")]
+        )
+        out = snap._render_markdown([(0, node)], {})
+        assert out == "## Title"
+
+    def test_link_renders_with_href(self):
+        node = snap._SnapshotNode("1", "link", "Home", 1, ref="e1")
+        out = snap._render_markdown([(0, node)], {"e1": "https://example.com"})
+        assert out == "[Home](https://example.com)"
+
+    def test_link_without_href_renders_as_plain_text(self):
+        node = snap._SnapshotNode("1", "link", "Home", 1, ref="e1")
+        out = snap._render_markdown([(0, node)], {})
+        assert out == "Home"
+
+    def test_listitem_renders_with_dash(self):
+        node = snap._SnapshotNode("1", "listitem", "First", 1)
+        out = snap._render_markdown([(0, node)], {})
+        assert out == "- First"
+
+    def test_button_renders_bold(self):
+        node = snap._SnapshotNode("1", "button", "Submit", 1)
+        out = snap._render_markdown([(0, node)], {})
+        assert out == "**Submit**"
+
+    def test_static_text_renders_as_paragraph(self):
+        node = snap._SnapshotNode("1", "StaticText", "Some text.", 1)
+        out = snap._render_markdown([(0, node)], {})
+        assert out == "Some text."
+
+    def test_generic_wrapper_emits_nothing_itself(self):
+        node = snap._SnapshotNode("1", "generic", "", 1)
+        out = snap._render_markdown([(0, node)], {})
+        assert out == ""
+
+    def test_static_text_child_of_link_is_not_duplicated(self):
+        link = snap._SnapshotNode("1", "link", "About", 1, ref="e1")
+        text = snap._SnapshotNode("2", "StaticText", "About", 2)
+        out = snap._render_markdown([(0, link), (1, text)], {"e1": "/about"})
+        assert out == "[About](/about)"
+
+    def test_static_text_sibling_after_link_subtree_is_kept(self):
+        link = snap._SnapshotNode("1", "link", "About", 1, ref="e1")
+        link_text = snap._SnapshotNode("2", "StaticText", "About", 2)
+        other = snap._SnapshotNode("3", "StaticText", "More text.", 3)
+        out = snap._render_markdown(
+            [(0, link), (1, link_text), (0, other)], {"e1": "/about"}
+        )
+        assert out == "[About](/about)\n\nMore text."
+
+    def test_multiple_blocks_joined_by_blank_line(self):
+        heading = snap._SnapshotNode(
+            "1", "heading", "Title", 1, properties=[("level", "1")]
+        )
+        para = snap._SnapshotNode("2", "StaticText", "Body text.", 2)
+        out = snap._render_markdown([(0, heading), (0, para)], {})
+        assert out == "# Title\n\nBody text."
+
+    def test_flat_listitems_without_nesting_still_use_dash(self):
+        a = snap._SnapshotNode("1", "listitem", "First", 1)
+        b = snap._SnapshotNode("2", "listitem", "Second", 2)
+        out = snap._render_markdown([(0, a), (0, b)], {})
+        assert out == "- First\n\n- Second"
+
+    def test_nested_listitem_renders_as_blockquote(self):
+        top = snap._SnapshotNode("1", "listitem", "Top comment", 1)
+        reply = snap._SnapshotNode("2", "listitem", "Reply", 2)
+        out = snap._render_markdown([(0, top), (1, reply)], {})
+        assert out == "> Top comment\n\n> > Reply"
+
+    def test_three_levels_of_nested_listitems(self):
+        top = snap._SnapshotNode("1", "listitem", "Top", 1)
+        mid = snap._SnapshotNode("2", "listitem", "Mid", 2)
+        leaf = snap._SnapshotNode("3", "listitem", "Leaf", 3)
+        out = snap._render_markdown([(0, top), (1, mid), (2, leaf)], {})
+        assert out == "> Top\n\n> > Mid\n\n> > > Leaf"
+
+    def test_static_text_body_inside_threaded_listitem_is_quoted(self):
+        top = snap._SnapshotNode("1", "listitem", "Top comment", 1)
+        body = snap._SnapshotNode("2", "StaticText", "Body text.", 2)
+        reply = snap._SnapshotNode("3", "listitem", "Reply", 3)
+        out = snap._render_markdown([(0, top), (1, body), (1, reply)], {})
+        assert out == "> Top comment\n\n> Body text.\n\n> > Reply"
+
+    def test_sibling_top_level_threads_each_start_at_depth_one(self):
+        top1 = snap._SnapshotNode("1", "listitem", "Thread 1", 1)
+        reply1 = snap._SnapshotNode("2", "listitem", "Reply 1", 2)
+        top2 = snap._SnapshotNode("3", "listitem", "Thread 2", 3)
+        reply2 = snap._SnapshotNode("4", "listitem", "Reply 2", 4)
+        out = snap._render_markdown(
+            [(0, top1), (1, reply1), (0, top2), (1, reply2)], {}
+        )
+        assert out == "> Thread 1\n\n> > Reply 1\n\n> Thread 2\n\n> > Reply 2"
+
+    def test_reddit_style_div_comment_renders_as_blockquote(self):
+        # Sites like old.reddit.com don't nest `listitem`s for comments at
+        # all - each comment is an unnamed `generic` <div> with a `form`
+        # (body text) and a `list` of action links (permalink/reply/...)
+        # as direct siblings.
+        comment = snap._SnapshotNode("1", "generic", "", 1)
+        form = snap._SnapshotNode("2", "form", "", 2)
+        body = snap._SnapshotNode("3", "StaticText", "Nice post.", 3)
+        actions = snap._SnapshotNode("4", "list", "", 4)
+        action_item = snap._SnapshotNode("5", "listitem", "", 5)
+        permalink = snap._SnapshotNode("6", "link", "permalink", 6)
+        levels = [
+            (0, comment),
+            (1, form),
+            (2, body),
+            (1, actions),
+            (2, action_item),
+            (3, permalink),
+        ]
+        out = snap._render_markdown(levels, {})
+        assert out == "> Nice post.\n\n> > permalink"
+
+    def test_generic_with_landmark_descendant_is_not_a_comment_root(self):
+        # A `form`+`list`(w/ a comment-action label) pairing alone isn't
+        # enough - the page's own outermost wrapper can coincidentally
+        # have both among its many unrelated children. A `main`/`banner`/
+        # etc. landmark descendant means it's page structure, not a
+        # comment, and should be left unquoted.
+        wrapper = snap._SnapshotNode("1", "generic", "", 1)
+        form = snap._SnapshotNode("2", "form", "", 2)
+        actions = snap._SnapshotNode("3", "list", "", 3)
+        action_item = snap._SnapshotNode("4", "listitem", "", 4)
+        reply = snap._SnapshotNode("5", "link", "reply", 5)
+        main = snap._SnapshotNode("6", "main", "", 6)
+        body = snap._SnapshotNode("7", "StaticText", "Page content.", 7)
+        levels = [
+            (0, wrapper),
+            (1, form),
+            (1, actions),
+            (2, action_item),
+            (3, reply),
+            (1, main),
+            (2, body),
+        ]
+        out = snap._render_markdown(levels, {})
+        assert out == "reply\n\nPage content."
+
+    def test_empty_named_listitem_does_not_swallow_child_link(self):
+        # A `listitem` with no accessible name (common for a wrapper
+        # around a single interactive child, e.g. an action-menu item)
+        # has nothing of its own to duplicate, so its child must still
+        # render instead of being dropped by the old-content skip.
+        item = snap._SnapshotNode("1", "listitem", "", 1)
+        link = snap._SnapshotNode("2", "link", "reply", 2)
+        out = snap._render_markdown([(0, item), (1, link)], {})
+        assert out == "reply"
+
+
 class TestFindAxIdForSelector:
     def test_raises_when_selector_matches_nothing(self, monkeypatch):
         driver = MagicMock()

@@ -20,6 +20,14 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
         text: bool = typer.Option(
             False, "--text", help="With --extract, plain text instead of Markdown."
         ),
+        snapshot: bool = typer.Option(
+            False,
+            "--snapshot",
+            help=(
+                "With --extract, get an accessibility-tree snapshot and render "
+                "that as Markdown, instead of the default trafilatura extraction."
+            ),
+        ),
         close: bool = typer.Option(
             False,
             "--close",
@@ -40,9 +48,15 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
                 raise typer.BadParameter("URL is required when using --extract.")
             if label:
                 raise typer.BadParameter("--label can't be combined with --extract.")
+            if snapshot and text:
+                raise typer.BadParameter("--snapshot can't be combined with --text.")
             print(
                 tabs.tab_new_extract(
-                    url, markdown=not text, close=close, headless=headless
+                    url,
+                    markdown=not text,
+                    close=close,
+                    headless=headless,
+                    snapshot=snapshot,
                 )
             )
         else:

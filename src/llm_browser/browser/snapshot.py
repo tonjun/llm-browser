@@ -235,6 +235,236 @@ def _filter_and_level(pairs, interactive: bool, compact: bool):
     return kept
 
 
+# Roles whose accessible `name` is computed from their full subtree text
+# (ARIA "name from content"). When one of these is rendered, its
+# descendants (typically StaticText echoing the same text) are skipped -
+# see `_render_markdown`.
+_NAME_FROM_CONTENT_ROLES = {
+    "heading",
+    "link",
+    "listitem",
+    "button",
+    "tab",
+    "menuitem",
+    "option",
+    "cell",
+    "columnheader",
+    "rowheader",
+    "treeitem",
+    "switch",
+    "checkbox",
+    "radio",
+}
+
+
+def _heading_level(node: "_SnapshotNode") -> int:
+    for key, value in node.properties:
+        if key == "level":
+            try:
+                return max(1, min(6, int(value)))
+            except ValueError:
+                break
+    return 1
+
+
+def _mark_threaded_listitems(levels) -> set[int]:
+    """Indices of `listitem` nodes that have a nested `listitem` descendant
+    (a reply list) - these are comment-thread-style nesting and should
+    render as blockquotes rather than dash bullets. A flat, non-nested
+    list of `listitem`s is left alone."""
+    threaded: set[int] = set()
+    for i, (level, node) in enumerate(levels):
+        if node.role != "listitem":
+            continue
+        for child_level, child_node in levels[i + 1 :]:
+            if child_level <= level:
+                break
+            if child_node.role == "listitem":
+                threaded.add(i)
+                break
+    return threaded
+
+
+# Link/listitem labels that only ever show up in a comment's own action
+# menu (permalink/reply/save/...), never in page navigation, sidebars,
+# or account widgets - see `_mark_comment_root_generics`.
+_COMMENT_ACTION_LABELS = {
+    "permalink",
+    "reply",
+    "save",
+    "unsave",
+    "report",
+    "embed",
+    "parent",
+    "give award",
+}
+
+# Landmark roles that only ever appear once, at page-structure level
+# (nav bar, main content region, sidebar, ...). A comment's own subtree
+# never contains one of these; the page's own outermost wrapper(s)
+# always do - see `_mark_comment_root_generics`.
+_LANDMARK_ROLES = {
+    "main",
+    "banner",
+    "navigation",
+    "contentinfo",
+    "complementary",
+    "search",
+    "region",
+}
+
+
+def _mark_comment_root_generics(levels) -> set[int]:
+    """Indices of `generic` nodes that look like an individual comment's
+    boundary `<div>`.
+
+    Many forums/discussion sites (e.g. old.reddit.com) don't structure
+    comment threads with nested `listitem`s at all - each comment is a
+    plain `<div>` (AX role `generic`) with a `<form>` (the in-place edit
+    form wrapping the comment body) and a `<ul>`/`list` of comment
+    actions (permalink/reply/save/...) as direct siblings, with reply
+    comments nested as further descendants. `generic` alone is far too
+    common a role to key nesting off of, and even a `form`+`list` sibling
+    pairing where the list's own contents are checked for comment-action
+    labels can still match the page's own outermost wrapper (it has
+    *some* form and *some* list among its dozens of unrelated direct
+    children, and the real comment list is deep inside it) - excluding
+    any generic whose subtree contains a page landmark (`main`, `banner`,
+    ...) rules those out, since a comment's own subtree never contains
+    one. Every match gets one blockquote level, whether or not it has
+    replies, so a lone top-level comment still reads as quoted content
+    distinct from surrounding page chrome."""
+    roots: set[int] = set()
+    for i, (level, node) in enumerate(levels):
+        if node.role != "generic":
+            continue
+        has_form = False
+        has_landmark = False
+        list_idx: int | None = None
+        for j in range(i + 1, len(levels)):
+            child_level, child_node = levels[j]
+            if child_level <= level:
+                break
+            if child_level == level + 1:
+                if child_node.role == "form":
+                    has_form = True
+                elif child_node.role == "list":
+                    list_idx = j
+            if child_node.role in _LANDMARK_ROLES:
+                has_landmark = True
+        if not has_form or has_landmark or list_idx is None:
+            continue
+        list_level = levels[list_idx][0]
+        for child_level, child_node in levels[list_idx + 1 :]:
+            if child_level <= list_level:
+                break
+            if child_node.name.strip().lower() in _COMMENT_ACTION_LABELS:
+                roots.add(i)
+                break
+    return roots
+
+
+def _quote(text: str, depth: int) -> str:
+    """Prefix every line of `text` with `depth` levels of Markdown
+    blockquote marker (``> ``), so multi-line content stays validly
+    quoted."""
+    if depth <= 0:
+        return text
+    prefix = "> " * depth
+    return "\n".join(f"{prefix}{line}" for line in text.split("\n"))
+
+
+def _render_markdown(levels, hrefs: dict) -> str:
+    """Convert the filtered/leveled AX tree straight into Markdown, e.g.:
+
+    ``heading`` -> ``#``..``######``, ``link`` -> ``[text](href)``,
+    ``listitem`` -> ``- text``, ``button`` -> ``**text**``, and plain
+    ``StaticText`` -> paragraph text. Roles in `_NAME_FROM_CONTENT_ROLES`
+    already carry their full text in `node.name`, so once one is emitted,
+    everything below it in the tree is skipped to avoid printing the same
+    text twice (once as the node's name, once via its StaticText children).
+
+    `listitem`s that nest other `listitem`s (e.g. a comment's replies)
+    render as Markdown blockquotes instead, one extra ``>`` per level of
+    nesting, so reply threads stay visually readable - see
+    `_mark_threaded_listitems`. Sites that structure comments as plain
+    nested `<div>`s instead get the same treatment via
+    `_mark_comment_root_generics`.
+
+    Only roles with a non-empty name ever set `skip_below`: an empty
+    name means nothing was emitted for that node, so there's no
+    duplicate text to protect against and its children (e.g. a link
+    inside an unlabeled wrapper) should still render.
+    """
+    threaded_indices = _mark_threaded_listitems(levels)
+    comment_root_indices = _mark_comment_root_generics(levels)
+    blocks: list[str] = []
+    skip_below: int | None = None
+    # Stack of (level, in_thread) for currently-open ancestor
+    # listitem/generic nodes that contribute a blockquote level.
+    thread_stack: list[tuple[int, bool]] = []
+    for i, (level, node) in enumerate(levels):
+        while thread_stack and thread_stack[-1][0] >= level:
+            thread_stack.pop()
+        quote_depth = sum(1 for _, in_thread in thread_stack if in_thread)
+
+        if skip_below is not None:
+            if level > skip_below:
+                continue
+            skip_below = None
+
+        role = node.role
+        name = node.name.strip()
+
+        if role == "heading":
+            if name:
+                blocks.append(
+                    _quote(f"{'#' * _heading_level(node)} {name}", quote_depth)
+                )
+                skip_below = level
+        elif role == "link":
+            if name:
+                href = hrefs.get(node.ref) if node.ref else None
+                text = f"[{name}]({href})" if href else name
+                blocks.append(_quote(text, quote_depth))
+                skip_below = level
+        elif role == "listitem":
+            is_threaded = quote_depth > 0 or i in threaded_indices
+            if is_threaded:
+                if name:
+                    blocks.append(_quote(name, quote_depth + 1))
+                if name and i not in threaded_indices:
+                    # Leaf reply (no nested listitem children of its own):
+                    # skip StaticText descendants just echoing this name.
+                    skip_below = level
+                # else: has nested replies, or nothing was emitted - don't
+                # skip its children, so they still render.
+            else:
+                if name:
+                    blocks.append(f"- {name}")
+                    skip_below = level
+            thread_stack.append((level, is_threaded))
+        elif role == "button":
+            if name:
+                blocks.append(_quote(f"**{name}**", quote_depth))
+                skip_below = level
+        elif role in _NAME_FROM_CONTENT_ROLES:
+            if name:
+                blocks.append(_quote(name, quote_depth))
+                skip_below = level
+        elif role == "StaticText" and name:
+            blocks.append(_quote(name, quote_depth))
+
+        # `_mark_comment_root_generics` only ever marks `generic` nodes,
+        # so no role check is needed here.
+        if i in comment_root_indices:
+            thread_stack.append((level, True))
+        # else: generic/paragraph/list/table wrapper etc. with no
+        # name-from-content - nothing to emit itself, children still render.
+
+    return "\n\n".join(blocks)
+
+
 def _render(levels, hrefs: dict, as_json: bool) -> str:
     items = []
     for level, node in levels:
@@ -276,7 +506,11 @@ def snapshot(
     selector: str | None = None,
     with_urls: bool = False,
     as_json: bool = False,
+    as_markdown: bool = False,
 ) -> str:
+    if as_json and as_markdown:
+        raise ValueError("as_json and as_markdown are mutually exclusive.")
+
     def _run(d: CDPMethods) -> str:
         # Clear stale refs from a previous snapshot before assigning new
         # ones - refs are only ever meaningful for the snapshot that
@@ -336,13 +570,17 @@ def snapshot(
             )
 
         hrefs: dict = {}
-        if with_urls:
+        # Markdown rendering needs hrefs to produce [text](href) links even
+        # when the caller didn't ask for -u/--urls explicitly.
+        if with_urls or as_markdown:
             raw = d.evaluate(
                 f"JSON.stringify([...document.querySelectorAll('[{_REF_ATTR}]')]"
                 f".reduce((o, el) => (o[el.getAttribute('{_REF_ATTR}')] = el.href || null, o), {{}}))"
             )
             hrefs = json_module.loads(raw) if raw else {}
 
+        if as_markdown:
+            return _render_markdown(levels, hrefs)
         return _render(levels, hrefs, as_json)
 
     return with_driver(_run)

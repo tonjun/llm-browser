@@ -26,12 +26,20 @@ def register(app: typer.Typer) -> None:
         as_json: bool = typer.Option(
             False, "--json", help="Machine-readable JSON output."
         ),
+        as_markdown: bool = typer.Option(
+            False,
+            "-m",
+            "--markdown",
+            help="Render the tree as Markdown instead of the default tree format.",
+        ),
     ) -> None:
         """Accessibility-tree snapshot with @eN refs for use with other commands.
 
         See docs/snapshot-and-refs.md for how refs work and their caveats
         (staleness on navigation, no cross-origin iframe inlining).
         """
+        if as_markdown and as_json:
+            raise typer.BadParameter("--markdown can't be combined with --json.")
         print(
             snapshot_.snapshot(
                 interactive=interactive,
@@ -40,5 +48,6 @@ def register(app: typer.Typer) -> None:
                 selector=selector,
                 with_urls=with_urls,
                 as_json=as_json,
+                as_markdown=as_markdown,
             )
         )
