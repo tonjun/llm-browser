@@ -235,3 +235,23 @@ class TestTabNewExtract:
         )
         extract_content.assert_not_called()
         assert result == "# Snapshot Title"
+
+    def test_until_stable_scrolls_before_extracting(self, d, monkeypatch):
+        scroll_until_stable = MagicMock(return_value=1234)
+        monkeypatch.setattr(tabs.interaction, "scroll_until_stable", scroll_until_stable)
+
+        result = tabs.tab_new_extract(
+            "https://example.com",
+            until_stable=True,
+            timeout=15.0,
+            stable_rounds=3,
+        )
+
+        scroll_until_stable.assert_called_once_with(px=2000, timeout=15.0, stable_rounds=3)
+        assert result == "# Title\n\nBody."
+
+    def test_until_stable_false_does_not_scroll(self, d, monkeypatch):
+        scroll_until_stable = MagicMock()
+        monkeypatch.setattr(tabs.interaction, "scroll_until_stable", scroll_until_stable)
+        tabs.tab_new_extract("https://example.com")
+        scroll_until_stable.assert_not_called()

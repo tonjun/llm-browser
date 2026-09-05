@@ -54,6 +54,7 @@ llm-browser drag <src> <dst>            # Drag and drop
 llm-browser upload <sel> <file...>      # Upload file(s) to a file input
 llm-browser scroll <dir> [px]           # up | down | left | right | top | bottom
 llm-browser scroll down --until-count <n> --selector <css> [--timeout s]  # scroll-and-collect
+llm-browser scroll down 2000 --until-stable [--stable-rounds n] [--timeout s]  # scroll to end of virtualized/infinite-scroll content
 llm-browser scrollintoview <sel>        # Scroll an element into view
 ```
 
@@ -75,6 +76,13 @@ Caveats:
   matches at least `<n>` elements, the count stops growing between scrolls
   (end of content), or `--timeout` (default 25s) elapses. Requires
   `--selector`.
+- `--until-stable` is for the same virtualized/infinite-scroll case when
+  there's no known target count (e.g. an open-ended comment thread): it
+  scrolls down and checks `document.documentElement.scrollHeight`, stopping
+  once the height hasn't grown for `--stable-rounds` (default 2) consecutive
+  checks, or `--timeout` (default 30s) elapses. Mutually exclusive with
+  `--until-count`. Pass a larger `px` (e.g. `2000`) than the plain-scroll
+  default of `300` so each step covers meaningful ground.
 
 ## Wait
 
@@ -165,6 +173,12 @@ llm-browser tab new <url> --extract --snapshot [--close]
                                   # tree snapshot rendered as Markdown instead of
                                   # trafilatura extraction (see Snapshot & refs
                                   # below); can't be combined with --text
+llm-browser tab new <url> --extract --until-stable [--stable-rounds n] [--timeout s]
+                                  # Scroll down until page height stops growing
+                                  # (see scroll --until-stable above) before
+                                  # extracting - for virtualized/infinite-scroll
+                                  # pages (e.g. www.reddit.com, X/Twitter); requires
+                                  # --extract
 llm-browser tab list             # List open tabs (index, target_id, label, url, title)
 llm-browser tab switch <index|label>   # Switch to a tab by index (-1 = newest) or label
 llm-browser tab close [index|label]    # Close a tab (default: current)

@@ -7,7 +7,9 @@ threads, or sites. It's built out of the commands documented in
 --until-count` are dedicated shortcuts for the three steps of that loop;
 the rest is the same `open`/`snapshot`/`fill`/`eval`/`read` toolkit used
 everywhere else in this CLI. See [`snapshot-and-refs.md`](snapshot-and-refs.md)
-for how `@eN` refs work if you're new to the ref model.
+for how `@eN` refs work if you're new to the ref model. `scroll --until-stable`
+covers the same loop when there's no known target count — see
+[Pagination / infinite scroll](#pagination--infinite-scroll).
 
 ## General web search
 
@@ -45,17 +47,28 @@ uv run llm-browser search reddit "your query"
 - **Prefer `old.reddit.com` over `www.reddit.com`** for scraping — its
   markup is plain server-rendered HTML with far less noise, so `snapshot`
   and `eval` extraction both work more reliably. `www.reddit.com` is a
-  heavy client-rendered SPA.
+  heavy client-rendered, scroll-virtualized SPA.
 - To search within one subreddit: `old.reddit.com/r/<subreddit>/search/
   ?q=<query>&restrict_sr=on`.
-- **Comment threads are lazy-loaded and often collapsed.** A single
-  `snapshot -i` on a post page won't surface nested/"load more comments"
-  branches — click the "load more comments" links (`click --text "load
-  more comments"`) to expand them first. Once expanded, `snapshot -m`
-  renders nested replies as nested blockquotes (`>`, `> >`, ...) so the
-  thread structure stays readable; if a page's comments aren't exposed as
-  nested list items in the accessibility tree, fall back to walking
-  `.comment` nodes via `eval` instead.
+- **Comment threads are lazy-loaded and often collapsed** — a single
+  `snapshot`/`extract` on a post page will only see whatever's currently in
+  the DOM, and how to force the rest to load differs by site variant:
+  - `old.reddit.com` **paginates** long threads behind "load more comments"
+    links instead of virtualizing — loop `click --text "load more comments"`
+    until no more remain, then `snapshot -m`, which renders nested replies
+    as nested blockquotes (`>`, `> >`, ...) so thread structure stays
+    readable.
+  - `www.reddit.com` **virtualizes on scroll** — most of the thread simply
+    isn't in the DOM until you scroll to it. Run `scroll down 2000
+    --until-stable` first to load everything the page will give you before
+    `snapshot -m`/`extract`; very deep reply chains may still need an
+    additional "load more replies"/"more replies" click-loop afterward.
+    `tab new <url> --extract --until-stable` collapses that open-then-scroll-
+    then-extract sequence into one command when you don't need the
+    intermediate snapshot.
+  - If a page's comments aren't exposed as nested list items in the
+    accessibility tree, fall back to walking `.comment` nodes via `eval`
+    instead.
 - No login is required for reading public posts/comments, but heavy,
   fast-paced scraping will get rate-limited or soft-blocked — pace requests
   and prefer the [official Reddit API](https://www.reddit.com/dev/api/)
@@ -74,9 +87,10 @@ uv run llm-browser snapshot -i -u
   [`commands.md`](commands.md#cookies--storage)) to reuse an authenticated
   session's cookies rather than trying to log in fresh each run.
 - **Infinite-scroll timeline, not pagination.** A single `snapshot` only
-  captures what's currently rendered. Extraction needs a scroll-then-
-  snapshot loop — see [Pagination / infinite scroll](#pagination--infinite-scroll)
-  below.
+  captures what's currently rendered. Run `scroll down 2000 --until-stable`
+  before extracting — see [Pagination / infinite scroll](#pagination--infinite-scroll)
+  below. Or use `tab new <url> --extract --until-stable` to open, scroll, and
+  extract in one command.
 - Result and tweet markup uses opaque, frequently-changing class names;
   don't rely on CSS selectors for tweet content — use `snapshot -i` (role/
   text-based) or extract via `eval` against visible text nodes instead.
@@ -176,11 +190,21 @@ than a full snapshot when you already know which ref you want.
 
 `scroll --until-count` formalizes the scroll-and-collect loop: it keeps
 scrolling down until a selector matches at least N elements, growth stalls
-(end of content), or a timeout elapses.
+(end of content), or a timeout elapses. Use it when you know roughly how
+many items you're after (or just want "everything," passing a high target).
 
 ```bash
 uv run llm-browser scroll down --until-count 50 --selector ".athing" --timeout 20
 uv run llm-browser snapshot -i --json     # or eval, to collect the loaded items
+```
+
+`scroll --until-stable` is the version for when there's no target count to
+give it — an open-ended comment thread, a virtualized feed — it just keeps
+scrolling until the page's height stops growing:
+
+```bash
+uv run llm-browser scroll down 2000 --until-stable
+uv run llm-browser snapshot -m            # render as nested Markdown once loaded
 ```
 
 For sites with real "next page" links/buttons instead of infinite scroll,

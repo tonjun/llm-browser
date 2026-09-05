@@ -230,6 +230,27 @@ class TestScrollUntilCount:
         assert result == 1
 
 
+class TestScrollUntilStable:
+    def test_returns_once_height_stops_growing(self, d):
+        d.evaluate.side_effect = [100, 200, 300, 300, 300]
+        result = interaction.scroll_until_stable()
+        assert result == 300
+        assert d.scroll_down.call_count == 4
+
+    def test_stops_when_growth_stalls_immediately(self, d):
+        d.evaluate.side_effect = [100, 100, 100]
+        result = interaction.scroll_until_stable()
+        assert result == 100
+        assert d.scroll_down.call_count == 2
+
+    def test_stops_at_timeout(self, d, monkeypatch):
+        times = iter([0, 0, 100])  # deadline check trips on 3rd read
+        monkeypatch.setattr(interaction.time, "monotonic", lambda: next(times))
+        d.evaluate.return_value = 100
+        result = interaction.scroll_until_stable(timeout=1)
+        assert result == 100
+
+
 def test_scroll_into_view(d):
     interaction.scroll_into_view("#a")
     d.scroll_into_view.assert_called_once_with("#a")
