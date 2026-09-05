@@ -157,17 +157,45 @@ def register(app: typer.Typer) -> None:
             "--selector",
             help="Element selector to count (required with --until-count).",
         ),
+        until_stable: bool = typer.Option(
+            False,
+            "--until-stable",
+            help="Keep scrolling down until page height stops growing "
+            "(for virtualized/infinite-scroll pages), or --timeout elapses.",
+        ),
+        stable_rounds: int = typer.Option(
+            2,
+            "--stable-rounds",
+            help="Consecutive non-growing checks required before "
+            "considering the page stable (with --until-stable).",
+        ),
         timeout: float = typer.Option(
-            25.0, "--timeout", help="Max seconds for --until-count."
+            None,
+            "--timeout",
+            help="Max seconds for --until-count (default 25) or "
+            "--until-stable (default 30).",
         ),
     ) -> None:
         """Scroll the page."""
+        if until_count is not None and until_stable:
+            raise typer.BadParameter(
+                "--until-count and --until-stable are mutually exclusive."
+            )
         if until_count is not None:
             if not selector:
                 raise typer.BadParameter("--until-count requires --selector.")
             print(
                 interaction.scroll_until_count(
-                    selector, until_count, px=px, timeout=timeout
+                    selector, until_count, px=px, timeout=timeout if timeout is not None else 25.0
+                )
+            )
+            return
+        if until_stable:
+            print(
+                interaction.scroll_until_stable(
+                    px,
+                    timeout=timeout if timeout is not None else 30.0,
+                    stable_rounds=stable_rounds,
                 )
             )
             return

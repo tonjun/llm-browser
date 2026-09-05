@@ -33,6 +33,24 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
             "--close",
             help="With --extract, close the tab again after extracting.",
         ),
+        until_stable: bool = typer.Option(
+            False,
+            "--until-stable",
+            help="With --extract, scroll down until page height stops growing "
+            "before extracting (for virtualized/infinite-scroll pages like "
+            "Reddit).",
+        ),
+        stable_rounds: int = typer.Option(
+            2,
+            "--stable-rounds",
+            help="Consecutive non-growing checks required before considering "
+            "the page stable (with --until-stable).",
+        ),
+        timeout: float = typer.Option(
+            30.0,
+            "--timeout",
+            help="Max seconds to scroll for (with --until-stable).",
+        ),
         label: str = typer.Option(
             None, "--label", help="Assign a label to the new tab."
         ),
@@ -57,9 +75,16 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
                     close=close,
                     headless=headless,
                     snapshot=snapshot,
+                    until_stable=until_stable,
+                    timeout=timeout,
+                    stable_rounds=stable_rounds,
                 )
             )
         else:
+            if until_stable or stable_rounds != 2 or timeout != 30.0:
+                raise typer.BadParameter(
+                    "--until-stable/--stable-rounds/--timeout require --extract."
+                )
             tabs.tab_new(url, label=label, headless=headless)
 
     @tab_app.command("list")

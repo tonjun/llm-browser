@@ -293,7 +293,14 @@ class TestTabsAndWindows:
         assert result.exit_code == 0
         assert result.output.strip() == "# Title"
         tab_new_extract.assert_called_once_with(
-            "https://x", markdown=True, close=False, headless=False, snapshot=False
+            "https://x",
+            markdown=True,
+            close=False,
+            headless=False,
+            snapshot=False,
+            until_stable=False,
+            timeout=30.0,
+            stable_rounds=2,
         )
 
     def test_tab_new_extract_text_and_close_flags(self, monkeypatch):
@@ -304,7 +311,14 @@ class TestTabsAndWindows:
         )
         assert result.exit_code == 0
         tab_new_extract.assert_called_once_with(
-            "https://x", markdown=False, close=True, headless=False, snapshot=False
+            "https://x",
+            markdown=False,
+            close=True,
+            headless=False,
+            snapshot=False,
+            until_stable=False,
+            timeout=30.0,
+            stable_rounds=2,
         )
 
     def test_tab_new_extract_snapshot_flag(self, monkeypatch):
@@ -315,8 +329,53 @@ class TestTabsAndWindows:
         )
         assert result.exit_code == 0
         tab_new_extract.assert_called_once_with(
-            "https://x", markdown=True, close=False, headless=False, snapshot=True
+            "https://x",
+            markdown=True,
+            close=False,
+            headless=False,
+            snapshot=True,
+            until_stable=False,
+            timeout=30.0,
+            stable_rounds=2,
         )
+
+    def test_tab_new_extract_until_stable_flag(self, monkeypatch):
+        tab_new_extract = MagicMock(return_value="# Title")
+        monkeypatch.setattr(tabs, "tab_new_extract", tab_new_extract)
+        result = runner.invoke(
+            app,
+            [
+                "tab",
+                "new",
+                "https://x",
+                "--extract",
+                "--until-stable",
+                "--stable-rounds",
+                "3",
+                "--timeout",
+                "15",
+            ],
+        )
+        assert result.exit_code == 0
+        tab_new_extract.assert_called_once_with(
+            "https://x",
+            markdown=True,
+            close=False,
+            headless=False,
+            snapshot=False,
+            until_stable=True,
+            timeout=15.0,
+            stable_rounds=3,
+        )
+
+    def test_tab_new_until_stable_requires_extract(self, monkeypatch):
+        tab_new = MagicMock()
+        monkeypatch.setattr(tabs, "tab_new", tab_new)
+        result = runner.invoke(
+            app, ["tab", "new", "https://x", "--until-stable"]
+        )
+        assert result.exit_code != 0
+        tab_new.assert_not_called()
 
     def test_tab_new_extract_snapshot_and_text_errors(self, monkeypatch):
         tab_new_extract = MagicMock()

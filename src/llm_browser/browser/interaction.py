@@ -263,6 +263,37 @@ def scroll_until_count(
     return with_driver(_run)
 
 
+def scroll_until_stable(
+    px: int = 2000, timeout: float = 30.0, stable_rounds: int = 2
+) -> int:
+    """Scroll down repeatedly until page height stops growing.
+
+    Useful for virtualized/infinite-scroll pages (e.g. www.reddit.com,
+    X/Twitter) where the target content count isn't known up front, unlike
+    `scroll_until_count`. Returns the final `scrollHeight` reached.
+    """
+    idle_s = 0.4
+
+    def _run(d: CDPMethods) -> int:
+        deadline = time.monotonic() + timeout
+        last_height = d.evaluate("document.documentElement.scrollHeight")
+        stable_count = 0
+        while time.monotonic() < deadline:
+            d.scroll_down(px)
+            d.sleep(idle_s)
+            height = d.evaluate("document.documentElement.scrollHeight")
+            if height <= last_height:
+                stable_count += 1
+                if stable_count >= stable_rounds:
+                    return height
+            else:
+                stable_count = 0
+            last_height = height
+        return last_height
+
+    return with_driver(_run)
+
+
 def scroll_into_view(selector: str) -> None:
     sel = resolve_selector(selector)
     with_driver(lambda d: d.scroll_into_view(sel))

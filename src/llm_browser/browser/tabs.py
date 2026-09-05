@@ -7,7 +7,7 @@ import sys
 from seleniumbase.core.sb_cdp import CDPMethods
 
 from llm_browser import session
-from llm_browser.browser import core, extract
+from llm_browser.browser import core, extract, interaction
 from llm_browser.browser import snapshot as snapshot_
 from llm_browser.browser.core import with_driver
 
@@ -58,12 +58,19 @@ def tab_new_extract(
     close: bool = False,
     headless: bool = False,
     snapshot: bool = False,
+    until_stable: bool = False,
+    px: int = 2000,
+    timeout: float = 30.0,
+    stable_rounds: int = 2,
 ) -> str:
     """Open ``url`` in a new tab, extract its main content, and optionally
     close the tab again. With ``snapshot=True``, content comes from an
     accessibility-tree snapshot rendered as Markdown (see
     ``browser.snapshot.snapshot``) instead of the default trafilatura-based
-    ``extract.extract_content``. This just composes ``tab_new`` + extract
+    ``extract.extract_content``. With ``until_stable=True``, scrolls down
+    until page height stops growing (see ``interaction.scroll_until_stable``)
+    before extracting - useful for virtualized/infinite-scroll pages (e.g.
+    www.reddit.com, X/Twitter). This just composes ``tab_new`` + extract
     (+ close) since ``with_driver`` always attaches to the newest tab."""
     existing = session.is_daemon_alive(session.read_state())
     core.ensure_session(headless=headless)
@@ -79,6 +86,10 @@ def tab_new_extract(
         d.sleep(2)
 
     with_driver(_open)
+    if until_stable:
+        interaction.scroll_until_stable(
+            px=px, timeout=timeout, stable_rounds=stable_rounds
+        )
     if snapshot:
         content = snapshot_.snapshot(compact=True, with_urls=True, as_markdown=True)
     else:

@@ -108,6 +108,8 @@ llm-browser uncheck @e3               # uncheck
 llm-browser select @e4 value1 value2  # select one or more dropdown options by value
 llm-browser upload @e5 file1.pdf      # upload file(s) to a file input
 llm-browser scroll down 500           # up | down | left | right | top | bottom
+llm-browser scroll down --until-count <n> --selector <css>   # scroll until a selector count is reached
+llm-browser scroll down 2000 --until-stable                  # scroll until page height stops growing (virtualized/infinite-scroll)
 llm-browser scrollintoview @e1        # scroll an element into view
 llm-browser drag @e1 @e2              # drag and drop
 ```
@@ -157,6 +159,7 @@ llm-browser snapshot -i
 ### Search & deep research
 
 ```bash
+llm-browser search google "site:reddit.com/r/Philippines \"ang hassle\""
 llm-browser search bing "llm browser automation"
 llm-browser search duckduckgo "llm browser automation"
 ```
@@ -167,6 +170,8 @@ returns a `snapshot -i -u` of the results in one call — `-u` means result
 `get attr @eN href` round-trip, either `click @eN` on a result's ref or
 `open` its href directly.
 
+Available engines: `google, bing, duckduckgo (ddg), reddit, hn (hackernews), or github.`
+
 If a site isn't one of `search`'s known engines, drive its search box by
 hand with the same underlying loop: `open` the homepage, `snapshot -i` to
 find the search box's `@eN` ref, `fill` the query, `press Enter`, then
@@ -175,10 +180,13 @@ re-`snapshot -i -u`.
 **Site-scoped search** (research sources beyond general web search) needs
 per-site handling: Reddit (`search reddit ...`) — targets `old.reddit.com`
 for scrapable markup, and expect comment threads to need "load more"
-clicks; X/Twitter (not in `search`'s list — use the manual loop against
+clicks; on `www.reddit.com` (virtualized, loads on scroll) run `scroll down
+2000 --until-stable` before `snapshot -m`/`extract` to load the full thread
+first, or do both in one shot with `tab new <url> --extract --until-stable`;
+X/Twitter (not in `search`'s list — use the manual loop against
 `x.com/search`) — most content needs a logged-in session (reuse cookies
-via `cookies get/set`) plus a scroll-then-snapshot loop for its infinite
-timeline; Hacker News (`search hn ...`) — plain HTML, or `read` the
+via `cookies get/set`) plus a `scroll down --until-stable` loop for its
+infinite timeline; Hacker News (`search hn ...`) — plain HTML, or `read` the
 Algolia search API URL directly for structured JSON; GitHub (`search
 github ...`) — rate-limits fast unauthenticated, prefer its API beyond a
 few lookups.
