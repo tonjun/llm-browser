@@ -17,37 +17,96 @@ def d(monkeypatch):
     return driver
 
 
+def _sent_cmd_dict(d):
+    """Decode the CDP wire params from the last d.page.send(...) call."""
+    (sent_command,), _ = d.page.send.call_args
+    # mycdp commands are generators that yield the CDP wire params.
+    return sent_command.send(None)
+
+
 class TestScreenshot:
-    def test_explicit_path_is_split_into_folder_and_name(self, d):
-        result = capture.screenshot("/tmp/shots/out.png")
-        assert result == "/tmp/shots/out.png"
-        d.save_screenshot.assert_called_once_with("out.png", folder="/tmp/shots")
+    def test_explicit_path_writes_decoded_bytes(self, d, tmp_path):
+        d.loop.run_until_complete.return_value = "ZmFrZS1wbmctYnl0ZXM="
+        target = tmp_path / "out.png"
+        result = capture.screenshot(str(target))
+        assert result == str(target)
+        assert target.read_bytes() == b"fake-png-bytes"
 
     def test_no_path_generates_one_under_state_dir(self, d):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
         result = capture.screenshot(None)
         assert result.startswith(str(session.state_dir()))
         assert result.endswith(".png")
-        assert d.save_screenshot.call_args.kwargs["folder"] == str(session.state_dir())
 
-    def test_relative_path_uses_current_dir_as_folder(self, d):
-        result = capture.screenshot("out.png")
-        assert result == "out.png"
-        d.save_screenshot.assert_called_once_with("out.png", folder=".")
+    def test_default_format_sends_png_and_no_quality(self, d):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
+        capture.screenshot(None)
+        cmd_dict = _sent_cmd_dict(d)
+        assert cmd_dict["params"]["format"] == "png"
+        assert "quality" not in cmd_dict["params"]
 
-    def test_full_page_uses_page_save_screenshot_via_loop(self, d):
-        result = capture.screenshot("/tmp/shots/out.png", full_page=True)
-        assert result == "/tmp/shots/out.png"
-        d.save_screenshot.assert_not_called()
-        d.page.save_screenshot.assert_called_once_with(
-            "/tmp/shots/out.png", full_page=True
-        )
-        d.loop.run_until_complete.assert_called_once()
+    def test_jpeg_format_and_quality_forwarded(self, d, tmp_path):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
+        target = tmp_path / "out.jpg"
+        capture.screenshot(str(target), format_="jpeg", quality=40)
+        cmd_dict = _sent_cmd_dict(d)
+        assert cmd_dict["params"]["format"] == "jpeg"
+        assert cmd_dict["params"]["quality"] == 40
 
-    def test_full_page_no_path_generates_one_under_state_dir(self, d):
-        result = capture.screenshot(None, full_page=True)
-        assert result.startswith(str(session.state_dir()))
-        assert result.endswith(".png")
-        d.page.save_screenshot.assert_called_once_with(result, full_page=True)
+    def test_webp_format_and_quality_forwarded(self, d, tmp_path):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
+        target = tmp_path / "out.webp"
+        capture.screenshot(str(target), format_="webp", quality=40)
+        cmd_dict = _sent_cmd_dict(d)
+        assert cmd_dict["params"]["format"] == "webp"
+        assert cmd_dict["params"]["quality"] == 40
+
+    def test_no_path_generates_jpg_extension_for_jpeg_format(self, d):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
+        result = capture.screenshot(None, format_="jpeg", quality=40)
+        assert result.endswith(".jpg")
+
+    def test_no_path_generates_webp_extension_for_webp_format(self, d):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
+        result = capture.screenshot(None, format_="webp", quality=40)
+        assert result.endswith(".webp")
+
+    def test_full_page_passes_capture_beyond_viewport(self, d, tmp_path):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
+        target = tmp_path / "out.png"
+        capture.screenshot(str(target), full_page=True)
+        cmd_dict = _sent_cmd_dict(d)
+        assert cmd_dict["params"]["captureBeyondViewport"] is True
+
+    def test_raises_on_empty_capture(self, d):
+        d.loop.run_until_complete.return_value = ""
+        with pytest.raises(RuntimeError):
+            capture.screenshot()
+
+    def test_stdout_returns_data_uri_without_writing_a_file(self, d, tmp_path, monkeypatch):
+        d.loop.run_until_complete.return_value = "ZmFrZS1wbmctYnl0ZXM="
+        monkeypatch.chdir(tmp_path)
+        result = capture.screenshot(to_stdout=True)
+        assert result == "data:image/png;base64,ZmFrZS1wbmctYnl0ZXM="
+        assert list(tmp_path.iterdir()) == []
+
+    def test_stdout_uses_format_specific_mime_type(self, d):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
+        result = capture.screenshot(to_stdout=True, format_="jpeg", quality=40)
+        assert result == "data:image/jpeg;base64,ZmFrZQ=="
+
+    def test_stdout_full_page_passes_capture_beyond_viewport(self, d):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
+        capture.screenshot(to_stdout=True, full_page=True)
+        cmd_dict = _sent_cmd_dict(d)
+        assert cmd_dict["method"] == "Page.captureScreenshot"
+        assert cmd_dict["params"]["format"] == "png"
+        assert cmd_dict["params"]["captureBeyondViewport"] is True
+
+    def test_stdout_raises_on_empty_capture(self, d):
+        d.loop.run_until_complete.return_value = ""
+        with pytest.raises(RuntimeError):
+            capture.screenshot(to_stdout=True)
 
 
 class TestSavePdf:
