@@ -446,7 +446,7 @@ class TestSnapshot:
             "compact": True,
             "depth": 2,
             "selector": "#a",
-            "with_urls": False,
+            "with_urls": True,
             "as_json": True,
             "as_markdown": False,
         }

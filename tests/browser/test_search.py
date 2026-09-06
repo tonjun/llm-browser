@@ -24,7 +24,7 @@ def test_google_builds_query_url(mocks):
     open_url.assert_called_once_with(
         "https://www.google.com/search?q=llm+browser+automation"
     )
-    snap.assert_called_once_with(interactive=True, with_urls=True)
+    snap.assert_called_once_with(compact=True)
     assert result == "snapshot output"
 
 

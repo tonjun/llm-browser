@@ -32,4 +32,11 @@ def search(engine: str, query: str) -> str:
             f"Choose from: {', '.join(sorted(set(_ENGINES)))}"
         )
     open_url(_ENGINES[key].format(q=quote_plus(query)))
-    return snapshot(interactive=True, with_urls=True)
+    # -i/--interactive would drop the result snippets: they're plain
+    # StaticText/emphasis siblings of each result link, not one of
+    # _INTERACTIVE_ROLES, so the interactive filter cuts them along with
+    # the actual page chrome it's meant to remove. -c/--compact keeps them
+    # (only unnamed empty structural wrappers are dropped) while still
+    # collapsing no-op wrapper divs, so results keep their href *and* body
+    # text.
+    return snapshot(compact=True)

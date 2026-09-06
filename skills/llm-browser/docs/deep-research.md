@@ -20,16 +20,19 @@ uv run llm-browser search duckduckgo "llm browser automation"
 ```
 
 `search <engine> <query>` opens the engine's query URL directly and
-returns a `snapshot -i -u` of the results in one call — no re-deriving a
-search-box `@eN` ref each time. `-u` on that snapshot means result
-`href`s are already in the output, so you can `open` a result's link or
-`click @eN` on it without a second `get attr @eN href` round-trip.
+returns a `snapshot -c` of the results in one call — no re-deriving a
+search-box `@eN` ref each time. `-c`/`--compact` rather than
+`-i`/`--interactive` because each result's snippet text is plain body
+text, not an interactive role, and `-i` would drop it along with the page
+chrome. Result `href`s are included in the snapshot by default, so you
+can `open` a result's link or `click @eN` on it without a second `get
+attr @eN href` round-trip.
 
 If you need to drive a search box by hand instead (a site not in
 `search`'s known-engine list, or you need intermediate steps like
 changing a filter first), the underlying loop is: `open` the homepage,
 `snapshot -i` to find the search box's ref, `fill` the query, `press
-Enter`, then re-`snapshot -i -u`.
+Enter`, then re-`snapshot -c` for the results (keeps snippet text).
 
 ## Site-scoped search
 
@@ -78,7 +81,7 @@ uv run llm-browser search reddit "your query"
 
 ```bash
 uv run llm-browser open https://x.com/search?q=your%20query&src=typed_query
-uv run llm-browser snapshot -i -u
+uv run llm-browser snapshot -i
 ```
 
 - **Most search and profile content requires being logged in** — X gates
@@ -127,8 +130,8 @@ CLI) over scraping the search UI.
 `search` only knows the engines above. For anything else, don't guess
 query-string formats — `open` the site's homepage or search page,
 `snapshot -i` to find the search input's ref, `fill` + `press Enter`, then
-`snapshot -i -u` the results. It's robust to markup/URL differences
-because it never depends on either.
+`snapshot -c` the results (keeps snippet text `-i` would drop). It's
+robust to markup/URL differences because it never depends on either.
 
 ## Web scraping / extraction patterns
 

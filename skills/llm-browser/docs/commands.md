@@ -29,8 +29,9 @@ llm-browser search <engine> <query>
 ```
 
 Drives straight to a known engine/site's query URL (no re-deriving a
-search-box `@eN` ref every call) and returns a `snapshot -i -u` of the
-results. `<engine>` is one of `google`, `bing`, `duckduckgo` (`ddg`),
+search-box `@eN` ref every call) and returns a `snapshot -c` of the
+results (hrefs and result snippet text included by default). `<engine>`
+is one of `google`, `bing`, `duckduckgo` (`ddg`),
 `reddit`, `hn` (`hackernews`), or `github`. See
 [`deep-research.md`](deep-research.md) for per-site caveats (e.g. why
 `reddit` search targets `old.reddit.com`).
@@ -226,7 +227,7 @@ llm-browser snapshot [-i] [-c] [-d N] [-s <css>] [-u] [--json] [-m]
 - `-c, --compact` - drop empty structural/generic nodes
 - `-d, --depth <n>` - limit tree depth
 - `-s, --selector <css>` - scope to the subtree rooted at a CSS selector
-- `-u, --urls` - include `href` on links
+- `-u, --urls` - include `href` on links (on by default)
 - `--json` - machine-readable output
 - `-m, --markdown` - render the tree as Markdown (headings, links, list
   items, paragraphs) instead of the default tree format; can't be

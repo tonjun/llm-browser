@@ -165,8 +165,10 @@ llm-browser search duckduckgo "llm browser automation"
 ```
 
 `search <engine> <query>` opens the engine's query URL directly and
-returns a `snapshot -i -u` of the results in one call — `-u` means result
-`href`s are already in the output, so pull out links without a second
+returns a `snapshot -c` of the results in one call — `-c`/`--compact`
+rather than `-i`/`--interactive`, so each result's snippet text comes
+back too (plain body text isn't an interactive role, so `-i` would drop
+it). `href`s are included by default, so pull out links without a second
 `get attr @eN href` round-trip, either `click @eN` on a result's ref or
 `open` its href directly.
 
@@ -175,7 +177,7 @@ Available engines: `google, bing, duckduckgo (ddg), reddit, hn (hackernews), or 
 If a site isn't one of `search`'s known engines, drive its search box by
 hand with the same underlying loop: `open` the homepage, `snapshot -i` to
 find the search box's `@eN` ref, `fill` the query, `press Enter`, then
-re-`snapshot -i -u`.
+re-`snapshot -c` for the results (same reasoning: keeps snippet text).
 
 **Site-scoped search** (research sources beyond general web search) needs
 per-site handling: Reddit (`search reddit ...`) — targets `old.reddit.com`
