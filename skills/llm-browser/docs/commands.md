@@ -132,9 +132,10 @@ llm-browser is online          # Does the browser have network connectivity?
 ## Screenshots & PDF
 
 ```bash
-llm-browser screenshot [path] [--full]   # Save a screenshot (--full for full-page)
-llm-browser screenshot --stdout          # Print a data:image/png;base64,... URI instead of writing a file
-llm-browser pdf <path>                   # Save the current page as a PDF
+llm-browser screenshot [path] [--full]                     # Save a screenshot (--full for full-page)
+llm-browser screenshot --stdout                            # Print a data:image/png;base64,... URI instead of writing a file
+llm-browser screenshot --format jpeg --quality 60 out.jpg  # Lossy jpeg/webp to shrink the file size
+llm-browser pdf <path>                                     # Save the current page as a PDF
 ```
 
 ## Eval

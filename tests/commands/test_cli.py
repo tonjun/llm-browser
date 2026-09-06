@@ -566,7 +566,7 @@ class TestCapture:
         monkeypatch.setattr(
             capture,
             "screenshot",
-            lambda path, full_page=False, to_stdout=False: "/tmp/out.png",
+            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: "/tmp/out.png",
         )
         result = runner.invoke(app, ["screenshot"])
         assert result.exit_code == 0
@@ -575,7 +575,7 @@ class TestCapture:
     def test_screenshot_full(self, monkeypatch):
         calls = {}
 
-        def fake_screenshot(path, full_page=False, to_stdout=False):
+        def fake_screenshot(path, full_page=False, to_stdout=False, format_="png", quality=None):
             calls["full_page"] = full_page
             return "/tmp/out.png"
 
@@ -587,7 +587,7 @@ class TestCapture:
     def test_screenshot_stdout(self, monkeypatch):
         calls = {}
 
-        def fake_screenshot(path, full_page=False, to_stdout=False):
+        def fake_screenshot(path, full_page=False, to_stdout=False, format_="png", quality=None):
             calls["to_stdout"] = to_stdout
             return "data:image/png;base64,ZmFrZQ=="
 
@@ -601,9 +601,45 @@ class TestCapture:
         monkeypatch.setattr(
             capture,
             "screenshot",
-            lambda path, full_page=False, to_stdout=False: "/tmp/out.png",
+            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: "/tmp/out.png",
         )
         result = runner.invoke(app, ["screenshot", "--stdout", "/tmp/out.png"])
+        assert result.exit_code != 0
+
+    def test_screenshot_format_and_quality_forwarded(self, monkeypatch):
+        calls = {}
+
+        def fake_screenshot(path, full_page=False, to_stdout=False, format_="png", quality=None):
+            calls["format_"] = format_
+            calls["quality"] = quality
+            return "/tmp/out.jpg"
+
+        monkeypatch.setattr(capture, "screenshot", fake_screenshot)
+        result = runner.invoke(
+            app, ["screenshot", "--format", "jpeg", "--quality", "40"]
+        )
+        assert result.exit_code == 0
+        assert calls["format_"] == "jpeg"
+        assert calls["quality"] == 40
+
+    def test_screenshot_quality_requires_lossy_format(self, monkeypatch):
+        monkeypatch.setattr(
+            capture,
+            "screenshot",
+            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: "/tmp/out.png",
+        )
+        result = runner.invoke(app, ["screenshot", "--quality", "40"])
+        assert result.exit_code != 0
+
+    def test_screenshot_quality_out_of_range(self, monkeypatch):
+        monkeypatch.setattr(
+            capture,
+            "screenshot",
+            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: "/tmp/out.jpg",
+        )
+        result = runner.invoke(
+            app, ["screenshot", "--format", "jpeg", "--quality", "101"]
+        )
         assert result.exit_code != 0
 
     def test_pdf_requires_path(self):
