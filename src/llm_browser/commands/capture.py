@@ -19,9 +19,19 @@ def register(app: typer.Typer) -> None:
             "--full",
             help="Capture the full scrollable page, not just the viewport.",
         ),
+        to_stdout: bool = typer.Option(
+            False,
+            "--stdout",
+            help=(
+                "Print a data:image/png;base64,... URI to stdout instead of "
+                "writing a file."
+            ),
+        ),
     ) -> None:
         """Take a screenshot."""
-        print(capture.screenshot(path, full_page=full))
+        if to_stdout and path:
+            raise typer.BadParameter("path is not used with --stdout")
+        print(capture.screenshot(path, full_page=full, to_stdout=to_stdout))
 
     @app.command()
     def pdf(path: str = typer.Argument(..., help="Output path.")) -> None:

@@ -224,8 +224,13 @@ list, and `eval --stdin` (heredoc) for anything else custom. Inline `eval
 ```bash
 llm-browser screenshot            # viewport screenshot, printed path
 llm-browser screenshot page.png   # specific path
+llm-browser screenshot --stdout   # print a data:image/png;base64,... URI, no file written
 llm-browser pdf output.pdf        # save the page as a PDF
 ```
+
+Use `--stdout` when the caller (e.g. an LLM agent) has no access to the
+filesystem the CLI runs on — it decodes the base64 payload directly instead
+of reading back a saved file.
 
 **`--full` (full-page, stitched screenshot) is not supported** —
 SeleniumBase's CDP-mode API has no native full-page capture method,

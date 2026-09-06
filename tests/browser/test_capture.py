@@ -49,6 +49,28 @@ class TestScreenshot:
         assert result.endswith(".png")
         d.page.save_screenshot.assert_called_once_with(result, full_page=True)
 
+    def test_stdout_returns_data_uri_without_writing_a_file(self, d):
+        d.loop.run_until_complete.return_value = "ZmFrZS1wbmctYnl0ZXM="
+        result = capture.screenshot(to_stdout=True)
+        assert result == "data:image/png;base64,ZmFrZS1wbmctYnl0ZXM="
+        d.save_screenshot.assert_not_called()
+        d.page.save_screenshot.assert_not_called()
+
+    def test_stdout_full_page_passes_capture_beyond_viewport(self, d):
+        d.loop.run_until_complete.return_value = "ZmFrZQ=="
+        capture.screenshot(to_stdout=True, full_page=True)
+        (sent_command,), _ = d.page.send.call_args
+        # mycdp commands are generators that yield the CDP wire params.
+        cmd_dict = sent_command.send(None)
+        assert cmd_dict["method"] == "Page.captureScreenshot"
+        assert cmd_dict["params"]["format"] == "png"
+        assert cmd_dict["params"]["captureBeyondViewport"] is True
+
+    def test_stdout_raises_on_empty_capture(self, d):
+        d.loop.run_until_complete.return_value = ""
+        with pytest.raises(RuntimeError):
+            capture.screenshot(to_stdout=True)
+
 
 class TestSavePdf:
     def test_splits_path_into_folder_and_name(self, d):
