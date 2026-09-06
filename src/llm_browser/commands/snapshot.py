@@ -21,7 +21,7 @@ def register(app: typer.Typer) -> None:
             None, "-s", "--selector", help="Scope to a CSS selector."
         ),
         with_urls: bool = typer.Option(
-            False, "-u", "--urls", help="Include href URLs on links."
+            True, "-u", "--urls", help="Include href URLs on links (default: on)."
         ),
         as_json: bool = typer.Option(
             False, "--json", help="Machine-readable JSON output."

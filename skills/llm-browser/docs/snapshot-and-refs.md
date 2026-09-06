@@ -48,7 +48,9 @@ from that.
 
    The bracketed attrs are trailing and optional - omitted entirely
    when a node has none. Refs (`ref=eN`) come from the tagging step
-   above; `href=` only appears with `-u/--urls`. A short allowlist of
+   above; `href=` is included by default for link nodes that resolve
+   one (`-u`/`--urls` is on by default; there's currently no flag to
+   turn it off). A short allowlist of
    ARIA state properties (`expanded`, `checked`, `pressed`, `selected`,
    `disabled`, `required`, `readonly`, `level`) is also surfaced when
    present on the node, ahead of `ref`/`href` in that fixed order -

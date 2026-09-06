@@ -504,7 +504,7 @@ def snapshot(
     compact: bool = False,
     depth: int | None = None,
     selector: str | None = None,
-    with_urls: bool = False,
+    with_urls: bool = True,
     as_json: bool = False,
     as_markdown: bool = False,
 ) -> str:
