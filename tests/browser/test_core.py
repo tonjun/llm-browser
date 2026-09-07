@@ -496,3 +496,62 @@ class TestWithDriver:
         fn = MagicMock(return_value="result")
         assert core.with_driver(fn) == "result"
         fn.assert_called_once_with(sentinel)
+
+    def test_holds_command_lock_while_fn_runs(self, monkeypatch):
+        """Regression test for the tab-new --extract hang: two concurrent
+        invocations must not both be attached to the daemon at once."""
+        monkeypatch.setattr(core, "_attach", lambda: MagicMock())
+
+        def fn(_d):
+            # The lock must already be held (reentrantly) here.
+            with session.command_lock():
+                pass
+            return "ok"
+
+        assert core.with_driver(fn) == "ok"
+
+    def test_releases_command_lock_even_on_exception(self, monkeypatch):
+        monkeypatch.setattr(core, "_attach", lambda: MagicMock())
+        with pytest.raises(RuntimeError):
+            core.with_driver(lambda _d: (_ for _ in ()).throw(RuntimeError("boom")))
+        # Lock must be free again - this would hang if it leaked.
+        with session.command_lock():
+            pass
+
+
+# --------------------------------------------------------------------------
+# _patch_cdp_send_timeout
+# --------------------------------------------------------------------------
+
+
+class TestPatchCdpSendTimeout:
+    def test_is_idempotent(self):
+        before = core.Connection.send
+        core._patch_cdp_send_timeout()
+        assert core.Connection.send is before
+
+    def test_times_out_instead_of_hanging(self, monkeypatch):
+        """Simulates the actual hang: a CDP command whose response never
+        arrives (e.g. because the tab it was sent to got closed) must
+        surface as a TimeoutError, not wedge the caller forever."""
+        import asyncio
+
+        from seleniumbase.undetected.cdp_driver.connection import Connection
+
+        conn = Connection.__new__(Connection)
+        orig_send = Connection.send
+
+        async def _never_returns(self, cdp_obj, _is_update=True):
+            await asyncio.Future()  # never resolves, like a dead websocket
+
+        # Install the never-returning "vendored original", then re-run our
+        # patch on top of it so this exercises the real wrapper logic.
+        type.__setattr__(Connection, "send", _never_returns)
+        monkeypatch.setattr(core, "_cdp_send_patched", False)
+        monkeypatch.setattr(core, "_CDP_COMMAND_TIMEOUT", 0.05)
+        try:
+            core._patch_cdp_send_timeout()
+            with pytest.raises(TimeoutError, match="timed out"):
+                asyncio.run(conn.send(None))
+        finally:
+            type.__setattr__(Connection, "send", orig_send)

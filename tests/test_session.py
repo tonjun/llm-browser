@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 
 import pytest
 
@@ -167,3 +169,63 @@ class TestSpawnLock:
             assert first is True
         with session.spawn_lock() as second:
             assert second is True
+
+
+class TestCommandLock:
+    def test_command_lock_file_path(self):
+        assert session.command_lock_file() == session.state_dir() / "command.lock"
+
+    def test_is_reentrant_within_one_thread(self):
+        """A caller already holding it (e.g. tab_new_extract wrapping
+        several with_driver calls) can take it again without deadlocking
+        on itself."""
+        with session.command_lock():
+            with session.command_lock():
+                pass  # would hang here if it weren't reentrant
+
+    def test_released_even_on_exception(self):
+        with pytest.raises(RuntimeError), session.command_lock():
+            raise RuntimeError("boom")
+        # A fresh acquisition afterwards must not block.
+        done = threading.Event()
+
+        def _acquire():
+            with session.command_lock():
+                done.set()
+
+        t = threading.Thread(target=_acquire, daemon=True)
+        t.start()
+        t.join(timeout=2)
+        assert done.is_set()
+
+    def test_serializes_concurrent_holders(self):
+        """The core fix for the reported hang: a second holder blocks
+        until the first releases, instead of both racing the daemon's
+        shared active-tab state at once."""
+        order: list[str] = []
+        first_acquired = threading.Event()
+
+        def _first():
+            with session.command_lock():
+                order.append("first-acquired")
+                first_acquired.set()
+                time.sleep(0.2)
+                order.append("first-released")
+
+        def _second():
+            # Only attempt once the first thread definitely holds the
+            # lock, so this necessarily has to block on it (rather than
+            # the outcome depending on which thread happens to get
+            # scheduled first).
+            first_acquired.wait(timeout=2)
+            with session.command_lock():
+                order.append("second-acquired")
+
+        t1 = threading.Thread(target=_first)
+        t2 = threading.Thread(target=_second)
+        t1.start()
+        t2.start()
+        t1.join(timeout=5)
+        t2.join(timeout=5)
+        assert not t1.is_alive() and not t2.is_alive()
+        assert order == ["first-acquired", "first-released", "second-acquired"]

@@ -49,7 +49,12 @@ def tab_new(
             labels[label] = target_id
             session.write_labels(labels)
 
-    with_driver(_run)
+    # Hold the lock across the whole open-and-mark-active sequence, not
+    # just the with_driver() call inside it: _mark_active picks
+    # d.get_tabs()[-1] (the newest tab), which races with a concurrent
+    # invocation's own open_new_tab otherwise - see session.command_lock().
+    with session.command_lock():
+        with_driver(_run)
 
 
 def tab_new_extract(
@@ -85,17 +90,30 @@ def tab_new_extract(
         _mark_active(d)
         d.sleep(2)
 
-    with_driver(_open)
-    if until_stable:
-        interaction.scroll_until_stable(
-            px=px, timeout=timeout, stable_rounds=stable_rounds
-        )
-    if snapshot:
-        content = snapshot_.snapshot(compact=True, with_urls=True, as_markdown=True)
-    else:
-        content = extract.extract_content(markdown=markdown)
-    if close:
-        tab_close()
+    # Held across the entire open/scroll/extract/close sequence (not just
+    # each with_driver() call inside it, which is reentrant against this):
+    # otherwise a concurrent invocation could open its own tab (or close
+    # "the active tab") in the gap between two of these steps and steal or
+    # kill the tab this call is still working on. Closing a tab out from
+    # under an in-flight CDP command on it hangs that command forever (the
+    # vendored CDP client's pending-command futures are never resolved or
+    # cancelled when the underlying websocket just closes) - see
+    # core._patch_cdp_send_timeout for the belt-and-suspenders fix on that
+    # side too.
+    with session.command_lock():
+        with_driver(_open)
+        if until_stable:
+            interaction.scroll_until_stable(
+                px=px, timeout=timeout, stable_rounds=stable_rounds
+            )
+        if snapshot:
+            content = snapshot_.snapshot(
+                compact=True, with_urls=True, as_markdown=True
+            )
+        else:
+            content = extract.extract_content(markdown=markdown)
+        if close:
+            tab_close()
     return content
 
 

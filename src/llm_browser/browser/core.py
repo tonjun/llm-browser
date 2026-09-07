@@ -24,6 +24,7 @@ import requests
 from seleniumbase import sb_cdp
 from seleniumbase.core.sb_cdp import CDPMethods
 from seleniumbase.undetected.cdp_driver import cdp_util
+from seleniumbase.undetected.cdp_driver.connection import Connection
 
 from llm_browser import session
 
@@ -32,8 +33,70 @@ T = TypeVar("T")
 _SPAWN_TIMEOUT = 10.0
 _SPAWN_POLL_INTERVAL = 0.1
 
+# How long a single CDP command may wait for its response before we give
+# up on it. Plenty for real work (page loads etc. are handled by our own
+# higher-level polling, not this), but short enough to fail loudly instead
+# of hanging the process.
+_CDP_COMMAND_TIMEOUT = 30.0
+
+_cdp_send_patched = False
+
 _REF_ATTR = "data-llmb-ref"
 _REF_RE = re.compile(r"^@(e\d+)$")
+
+
+def _patch_cdp_send_timeout() -> None:
+    """Make ``Connection.send`` give up instead of hanging forever.
+
+    Every CDP command is sent as a ``Transaction`` (an ``asyncio.Future``,
+    see the vendored ``connection.py``) and awaited with no timeout of its
+    own. If the tab it was sent to gets closed - by another
+    ``llm-browser`` invocation racing this one (see
+    ``session.command_lock``), or by the page/user closing it directly -
+    the websocket just closes; ``Connection``'s listener loop reacts by
+    logging and breaking out, but it never resolves or cancels whatever
+    ``Transaction`` futures were still pending in ``self.mapper``. Nothing
+    above that in the stack times out either, so the CLI process hangs
+    indefinitely.
+
+    ``command_lock`` closes the race that mainly triggers this, but this
+    patch is the actual fix for the hang itself - a closed/dead tab should
+    surface as an error, not wedge the process. Wraps the original
+    coroutine in ``asyncio.wait_for``: on timeout that cancels it, which
+    (since ``Transaction`` is itself the awaited ``Future``) throws
+    ``CancelledError`` into the pending ``await tx`` - not caught by
+    ``send``'s own ``except Exception`` (``CancelledError`` isn't an
+    ``Exception`` subclass on the Python versions this project supports),
+    so it propagates out and ``wait_for`` turns it into a ``TimeoutError``.
+    Idempotent - safe to call more than once (e.g. under a test runner
+    that imports this module repeatedly). ``Connection`` uses a metaclass
+    that rejects plain ``Connection.send = ...`` (it exists to stop
+    accidental class-level overrides that would leak across unrelated
+    instances - exactly what a *deliberate* global patch like this one
+    wants) - ``type.__setattr__`` goes around that hook.
+    """
+    global _cdp_send_patched
+    if _cdp_send_patched:
+        return
+    _orig_send = Connection.send
+
+    async def _send(self, cdp_obj, _is_update=True):
+        try:
+            return await asyncio.wait_for(
+                _orig_send(self, cdp_obj, _is_update),
+                timeout=_CDP_COMMAND_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"CDP command timed out after {_CDP_COMMAND_TIMEOUT:.0f}s "
+                "(the tab it was sent to is likely closed or gone)."
+            ) from None
+
+    type.__setattr__(Connection, "send", _send)
+    _cdp_send_patched = True
+
+
+_patch_cdp_send_timeout()
 
 
 def _spawn_daemon(headless: bool) -> None:
@@ -248,7 +311,12 @@ def _attach() -> CDPMethods:
 
 
 def with_driver(fn: Callable[[CDPMethods], T]) -> T:
-    return fn(_attach())
+    # Serialize against other CLI invocations touching the daemon's shared
+    # Chrome - see session.command_lock() for why. Reentrant, so callers
+    # that already hold it (tabs.py's tab_new_extract, wrapping several
+    # with_driver calls in one) don't deadlock on themselves here.
+    with session.command_lock():
+        return fn(_attach())
 
 
 def resolve_selector(sel: str) -> str:
