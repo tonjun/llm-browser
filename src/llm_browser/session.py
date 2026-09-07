@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import fcntl
 import json
 import os
 import socket
+import threading
 from pathlib import Path
 
 
@@ -39,6 +41,10 @@ def session_file() -> Path:
 
 def lock_file() -> Path:
     return state_dir() / "session.lock"
+
+
+def command_lock_file() -> Path:
+    return state_dir() / "command.lock"
 
 
 def labels_file() -> Path:
@@ -178,3 +184,43 @@ def spawn_lock():
             os.close(fd)
             with contextlib.suppress(FileNotFoundError):
                 path.unlink()
+
+
+_command_lock_local = threading.local()
+
+
+@contextlib.contextmanager
+def command_lock():
+    """Blocking, cross-process lock serializing commands against the daemon.
+
+    The daemon has exactly one "active tab" pointer (``active_tab_file``,
+    read/written by ``browser/core.py`` and ``browser/tabs.py``), so two
+    ``llm-browser`` invocations running at once can race on it - e.g. one
+    opening a tab and marking it active just as another reads/overwrites
+    that pointer, or one closing "the active tab" while a different
+    process is still mid-extract on what it thought was its own tab (see
+    the write-up in the commit that added this). Unlike ``spawn_lock``
+    (best-effort, non-blocking, only for daemon startup), this blocks
+    until acquired via ``flock`` so a second invocation queues instead of
+    racing the first.
+
+    Reentrant *within one process/thread* (tracked with a depth counter)
+    so a caller that already holds it - e.g. ``tab_new_extract`` wrapping
+    several separate ``with_driver`` calls (open, scroll, extract, close)
+    in one lock so the whole sequence is atomic - doesn't deadlock on
+    itself when those calls take the lock again internally.
+    """
+    depth = getattr(_command_lock_local, "depth", 0)
+    if depth == 0:
+        fd = os.open(command_lock_file(), os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        _command_lock_local.fd = fd
+    _command_lock_local.depth = depth + 1
+    try:
+        yield
+    finally:
+        _command_lock_local.depth -= 1
+        if _command_lock_local.depth == 0:
+            fcntl.flock(_command_lock_local.fd, fcntl.LOCK_UN)
+            os.close(_command_lock_local.fd)
+            del _command_lock_local.fd
