@@ -99,10 +99,12 @@ def _patch_cdp_send_timeout() -> None:
 _patch_cdp_send_timeout()
 
 
-def _spawn_daemon(headless: bool) -> None:
+def _spawn_daemon(headless: bool, headed: bool) -> None:
     args = [sys.executable, "-m", "llm_browser.daemon"]
     if headless:
         args.append("--headless")
+    elif headed:
+        args.append("--headed")
     with open(session.log_file(), "ab") as log:
         subprocess.Popen(
             args,
@@ -144,7 +146,7 @@ def _kill_daemon_group(pid: int, sig: signal.Signals) -> None:
         pass
 
 
-def _ensure_daemon(headless: bool) -> session.SessionState:
+def _ensure_daemon(headless: bool, headed: bool) -> session.SessionState:
     """Return an alive session, spawning the daemon if none is running."""
     state = session.read_state()
     if session.is_daemon_alive(state):
@@ -159,7 +161,7 @@ def _ensure_daemon(headless: bool) -> session.SessionState:
                 # before starting a fresh one in the same profile dir.
                 _kill_daemon_group(state.pid, signal.SIGKILL)
             session.clear_state()
-            _spawn_daemon(headless=headless)
+            _spawn_daemon(headless=headless, headed=headed)
         # Whether we spawned it or lost the race to another CLI
         # invocation doing the same thing, wait for it to come up.
         return _wait_for_daemon()
@@ -184,24 +186,31 @@ def _ensure_target(state: session.SessionState) -> None:
         requests.put(f"{base}/json/new", timeout=5)
 
 
-def ensure_session(headless: bool = False) -> session.SessionState:
+def ensure_session(
+    headless: bool = False, headed: bool = False
+) -> session.SessionState:
     """Start the daemon if it's not already running, and return its state.
 
     Composes the same two steps ``open_url`` uses below: spawn (or reuse)
     the daemon, then make sure its Chrome has at least one open tab.
     """
-    state = _ensure_daemon(headless=headless)
+    state = _ensure_daemon(headless=headless, headed=headed)
     _ensure_target(state)
     return state
 
 
-def open_url(url: str, headless: bool = False) -> None:
+def open_url(url: str, headless: bool = False, headed: bool = False) -> None:
     """Open a URL in the persistent browser session, starting it if needed."""
     existing = session.is_daemon_alive(session.read_state())
-    state = _ensure_daemon(headless=headless)
+    state = _ensure_daemon(headless=headless, headed=headed)
     if existing and headless:
         print(
             "Note: --headless is ignored; a session is already running.",
+            file=sys.stderr,
+        )
+    if existing and headed:
+        print(
+            "Note: --headed is ignored; a session is already running.",
             file=sys.stderr,
         )
 

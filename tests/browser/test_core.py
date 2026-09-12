@@ -101,7 +101,7 @@ class TestSpawnDaemon:
     def test_builds_headless_args(self, monkeypatch):
         popen = MagicMock()
         monkeypatch.setattr(core.subprocess, "Popen", popen)
-        core._spawn_daemon(headless=True)
+        core._spawn_daemon(headless=True, headed=False)
         args = popen.call_args.args[0]
         assert args[-1] == "--headless"
         assert args[:-1] == [core.sys.executable, "-m", "llm_browser.daemon"]
@@ -110,9 +110,18 @@ class TestSpawnDaemon:
     def test_builds_headed_args(self, monkeypatch):
         popen = MagicMock()
         monkeypatch.setattr(core.subprocess, "Popen", popen)
-        core._spawn_daemon(headless=False)
+        core._spawn_daemon(headless=False, headed=True)
+        args = popen.call_args.args[0]
+        assert args[-1] == "--headed"
+        assert args[:-1] == [core.sys.executable, "-m", "llm_browser.daemon"]
+
+    def test_builds_default_args(self, monkeypatch):
+        popen = MagicMock()
+        monkeypatch.setattr(core.subprocess, "Popen", popen)
+        core._spawn_daemon(headless=False, headed=False)
         args = popen.call_args.args[0]
         assert "--headless" not in args
+        assert "--headed" not in args
         assert args == [core.sys.executable, "-m", "llm_browser.daemon"]
 
 
@@ -149,7 +158,7 @@ class TestEnsureDaemon:
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
         spawn = MagicMock()
         monkeypatch.setattr(core, "_spawn_daemon", spawn)
-        result = core._ensure_daemon(headless=False)
+        result = core._ensure_daemon(headless=False, headed=False)
         assert result is state
         spawn.assert_not_called()
 
@@ -171,10 +180,31 @@ class TestEnsureDaemon:
         new_state = session.SessionState(pid=2, host="h", port=2)
         monkeypatch.setattr(core, "_wait_for_daemon", lambda: new_state)
 
-        result = core._ensure_daemon(headless=True)
+        result = core._ensure_daemon(headless=True, headed=False)
         assert result is new_state
-        spawn.assert_called_once_with(headless=True)
+        spawn.assert_called_once_with(headless=True, headed=False)
         clear.assert_called_once()
+
+    def test_spawns_headed_when_no_state_and_lock_acquired(self, monkeypatch):
+        monkeypatch.setattr(session, "read_state", lambda: None)
+        monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
+
+        import contextlib
+
+        @contextlib.contextmanager
+        def fake_lock():
+            yield True
+
+        monkeypatch.setattr(session, "spawn_lock", fake_lock)
+        monkeypatch.setattr(session, "clear_state", MagicMock())
+        spawn = MagicMock()
+        monkeypatch.setattr(core, "_spawn_daemon", spawn)
+        new_state = session.SessionState(pid=2, host="h", port=2)
+        monkeypatch.setattr(core, "_wait_for_daemon", lambda: new_state)
+
+        result = core._ensure_daemon(headless=False, headed=True)
+        assert result is new_state
+        spawn.assert_called_once_with(headless=False, headed=True)
 
     def test_kills_stale_daemon_before_respawning(self, monkeypatch):
         stale = session.SessionState(pid=99, host="h", port=1)
@@ -194,7 +224,7 @@ class TestEnsureDaemon:
         kill = MagicMock()
         monkeypatch.setattr(core, "_kill_daemon_group", kill)
 
-        core._ensure_daemon(headless=False)
+        core._ensure_daemon(headless=False, headed=False)
         kill.assert_called_once_with(99, signal.SIGKILL)
 
     def test_does_not_spawn_when_lock_not_acquired(self, monkeypatch):
@@ -213,7 +243,7 @@ class TestEnsureDaemon:
         winner_state = session.SessionState(pid=3, host="h", port=3)
         monkeypatch.setattr(core, "_wait_for_daemon", lambda: winner_state)
 
-        result = core._ensure_daemon(headless=False)
+        result = core._ensure_daemon(headless=False, headed=False)
         assert result is winner_state
         spawn.assert_not_called()
 
@@ -279,7 +309,7 @@ class TestOpenUrl:
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
         monkeypatch.setattr(session, "read_state", lambda: state)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
-        monkeypatch.setattr(core, "_ensure_daemon", lambda headless: state)
+        monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
         monkeypatch.setattr(core, "_ensure_target", MagicMock())
 
         driver = MagicMock()
@@ -301,7 +331,7 @@ class TestOpenUrl:
         # Session already alive before this call.
         monkeypatch.setattr(session, "read_state", lambda: state)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
-        monkeypatch.setattr(core, "_ensure_daemon", lambda headless: state)
+        monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
         monkeypatch.setattr(core, "_ensure_target", MagicMock())
         driver = MagicMock()
         driver.get_title.return_value = "Title"
@@ -312,19 +342,54 @@ class TestOpenUrl:
         err = capsys.readouterr().err
         assert "Note: --headless is ignored" in err
 
+    def test_warns_when_headed_ignored_for_existing_session(
+        self, monkeypatch, capsys
+    ):
+        state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
+        # Session already alive before this call.
+        monkeypatch.setattr(session, "read_state", lambda: state)
+        monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
+        monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
+        monkeypatch.setattr(core, "_ensure_target", MagicMock())
+        driver = MagicMock()
+        driver.get_title.return_value = "Title"
+        monkeypatch.setattr(core.sb_cdp, "Chrome", MagicMock(return_value=driver))
+
+        core.open_url("https://example.com", headed=True)
+
+        err = capsys.readouterr().err
+        assert "Note: --headed is ignored" in err
+
     def test_no_warning_when_starting_fresh_headless(self, monkeypatch, capsys):
         # No session running yet, so "existing" is False - no warning even
         # with headless=True.
         monkeypatch.setattr(session, "read_state", lambda: None)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
-        monkeypatch.setattr(core, "_ensure_daemon", lambda headless: state)
+        monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
         monkeypatch.setattr(core, "_ensure_target", MagicMock())
         driver = MagicMock()
         driver.get_title.return_value = "Title"
         monkeypatch.setattr(core.sb_cdp, "Chrome", MagicMock(return_value=driver))
 
         core.open_url("https://example.com", headless=True)
+
+        out = capsys.readouterr().out
+        assert "Note:" not in out
+
+    def test_no_warning_when_starting_fresh_headed(self, monkeypatch, capsys):
+        # No session running yet, so "existing" is False - no warning even
+        # with headed=True.
+        monkeypatch.setattr(session, "read_state", lambda: None)
+        monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
+        state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
+        monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
+        monkeypatch.setattr(core, "_ensure_target", MagicMock())
+        driver = MagicMock()
+        driver.get_title.return_value = "Title"
+        monkeypatch.setattr(core.sb_cdp, "Chrome", MagicMock(return_value=driver))
+
+        core.open_url("https://example.com", headed=True)
 
         out = capsys.readouterr().out
         assert "Note:" not in out

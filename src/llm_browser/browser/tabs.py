@@ -28,13 +28,21 @@ def _mark_active(d: CDPMethods):
 
 
 def tab_new(
-    url: str | None = None, label: str | None = None, headless: bool = False
+    url: str | None = None,
+    label: str | None = None,
+    headless: bool = False,
+    headed: bool = False,
 ) -> None:
     existing = session.is_daemon_alive(session.read_state())
-    core.ensure_session(headless=headless)
+    core.ensure_session(headless=headless, headed=headed)
     if existing and headless:
         print(
             "Note: --headless is ignored; a session is already running.",
+            file=sys.stderr,
+        )
+    if existing and headed:
+        print(
+            "Note: --headed is ignored; a session is already running.",
             file=sys.stderr,
         )
 
@@ -62,6 +70,7 @@ def tab_new_extract(
     markdown: bool = True,
     close: bool = False,
     headless: bool = False,
+    headed: bool = False,
     snapshot: bool = False,
     until_stable: bool = False,
     px: int = 2000,
@@ -78,10 +87,15 @@ def tab_new_extract(
     www.reddit.com, X/Twitter). This just composes ``tab_new`` + extract
     (+ close) since ``with_driver`` always attaches to the newest tab."""
     existing = session.is_daemon_alive(session.read_state())
-    core.ensure_session(headless=headless)
+    core.ensure_session(headless=headless, headed=headed)
     if existing and headless:
         print(
             "Note: --headless is ignored; a session is already running.",
+            file=sys.stderr,
+        )
+    if existing and headed:
+        print(
+            "Note: --headed is ignored; a session is already running.",
             file=sys.stderr,
         )
 

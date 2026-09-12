@@ -20,16 +20,30 @@ class TestRun:
         monkeypatch.setattr(daemon.signal, "pause", MagicMock(side_effect=SystemExit))
 
         with pytest.raises(SystemExit):
-            daemon._run(headless=True)
+            daemon._run(headless=True, headed=False)
 
         chrome.assert_called_once()
         assert chrome.call_args.kwargs["headless"] is True
+        assert chrome.call_args.kwargs["headed"] is False
         assert chrome.call_args.kwargs["user_data_dir"] == str(session.profile_dir())
 
         state = session.read_state()
         assert state is not None
         assert state.port == 9222
         assert state.host == "127.0.0.1"
+
+    def test_launches_chrome_headed(self, monkeypatch):
+        driver = MagicMock()
+        driver.get_rd_port.return_value = 9222
+        chrome = MagicMock(return_value=driver)
+        monkeypatch.setattr(daemon.sb_cdp, "Chrome", chrome)
+        monkeypatch.setattr(daemon.signal, "pause", MagicMock(side_effect=SystemExit))
+
+        with pytest.raises(SystemExit):
+            daemon._run(headless=False, headed=True)
+
+        assert chrome.call_args.kwargs["headless"] is False
+        assert chrome.call_args.kwargs["headed"] is True
 
     def test_registers_sigterm_and_sigint_handlers(self, monkeypatch):
         driver = MagicMock()
@@ -44,7 +58,7 @@ class TestRun:
         monkeypatch.setattr(daemon.signal, "signal", fake_signal)
 
         with pytest.raises(SystemExit):
-            daemon._run(headless=False)
+            daemon._run(headless=False, headed=False)
 
         assert signal.SIGTERM in registered
         assert signal.SIGINT in registered
@@ -62,7 +76,7 @@ class TestRun:
         )
 
         with pytest.raises(SystemExit):
-            daemon._run(headless=False)
+            daemon._run(headless=False, headed=False)
 
         session.write_state(pid=1, host="h", port=1)
         with pytest.raises(SystemExit):
@@ -85,7 +99,7 @@ class TestRun:
         )
 
         with pytest.raises(SystemExit):
-            daemon._run(headless=False)
+            daemon._run(headless=False, headed=False)
 
         session.write_state(pid=1, host="h", port=1)
         # quit() raising propagates past the `finally` (sys.exit() is
@@ -101,17 +115,40 @@ class TestMain:
     def test_parses_headless_flag(self, monkeypatch):
         called = {}
         monkeypatch.setattr(
-            daemon, "_run", lambda headless: called.setdefault("headless", headless)
+            daemon,
+            "_run",
+            lambda headless, headed: called.update(headless=headless, headed=headed),
         )
         monkeypatch.setattr(daemon.sys, "argv", ["daemon", "--headless"])
         daemon.main()
         assert called["headless"] is True
+        assert called["headed"] is False
+
+    def test_parses_headed_flag(self, monkeypatch):
+        called = {}
+        monkeypatch.setattr(
+            daemon,
+            "_run",
+            lambda headless, headed: called.update(headless=headless, headed=headed),
+        )
+        monkeypatch.setattr(daemon.sys, "argv", ["daemon", "--headed"])
+        daemon.main()
+        assert called["headed"] is True
+        assert called["headless"] is False
 
     def test_defaults_headless_false(self, monkeypatch):
         called = {}
         monkeypatch.setattr(
-            daemon, "_run", lambda headless: called.setdefault("headless", headless)
+            daemon,
+            "_run",
+            lambda headless, headed: called.update(headless=headless, headed=headed),
         )
         monkeypatch.setattr(daemon.sys, "argv", ["daemon"])
         daemon.main()
         assert called["headless"] is False
+        assert called["headed"] is False
+
+    def test_rejects_headless_and_headed_together(self, monkeypatch):
+        monkeypatch.setattr(daemon.sys, "argv", ["daemon", "--headless", "--headed"])
+        with pytest.raises(SystemExit):
+            daemon.main()

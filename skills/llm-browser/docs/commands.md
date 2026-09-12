@@ -15,7 +15,7 @@ role/label/placeholder/testid` semantic-locator system (see
 ## Navigation
 
 ```bash
-llm-browser open <url> [--headless]   # Launch (or reuse) the session and navigate
+llm-browser open <url> [--headless | --headed]   # Launch (or reuse) the session and navigate
 llm-browser close                     # Shut down the persistent session
 llm-browser back                      # Go back
 llm-browser forward                   # Go forward

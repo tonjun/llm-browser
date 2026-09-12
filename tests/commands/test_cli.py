@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 from typer.testing import CliRunner
 
+from llm_browser import __version__
 from llm_browser.browser import (
     captcha,
     capture,
@@ -44,13 +45,39 @@ def test_app_help_lists_top_level_commands():
     assert "snapshot" in result.output
 
 
+def test_version_flag_prints_version_and_exits():
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == f"llm-browser {__version__}"
+
+
 class TestNavigation:
     def test_open(self, monkeypatch):
         open_url = MagicMock()
         monkeypatch.setattr(core, "open_url", open_url)
         result = runner.invoke(app, ["open", "https://example.com", "--headless"])
         assert result.exit_code == 0
-        open_url.assert_called_once_with("https://example.com", headless=True)
+        open_url.assert_called_once_with(
+            "https://example.com", headless=True, headed=False
+        )
+
+    def test_open_headed(self, monkeypatch):
+        open_url = MagicMock()
+        monkeypatch.setattr(core, "open_url", open_url)
+        result = runner.invoke(app, ["open", "https://example.com", "--headed"])
+        assert result.exit_code == 0
+        open_url.assert_called_once_with(
+            "https://example.com", headless=False, headed=True
+        )
+
+    def test_open_rejects_headless_and_headed_together(self, monkeypatch):
+        open_url = MagicMock()
+        monkeypatch.setattr(core, "open_url", open_url)
+        result = runner.invoke(
+            app, ["open", "https://example.com", "--headless", "--headed"]
+        )
+        assert result.exit_code != 0
+        open_url.assert_not_called()
 
     def test_close_when_session_running(self, monkeypatch):
         monkeypatch.setattr(core, "close_session", lambda: True)
@@ -268,14 +295,36 @@ class TestTabsAndWindows:
         monkeypatch.setattr(tabs, "tab_new", tab_new)
         result = runner.invoke(app, ["tab", "new", "https://x"])
         assert result.exit_code == 0
-        tab_new.assert_called_once_with("https://x", label=None, headless=False)
+        tab_new.assert_called_once_with(
+            "https://x", label=None, headless=False, headed=False
+        )
+
+    def test_tab_new_headed(self, monkeypatch):
+        tab_new = MagicMock()
+        monkeypatch.setattr(tabs, "tab_new", tab_new)
+        result = runner.invoke(app, ["tab", "new", "https://x", "--headed"])
+        assert result.exit_code == 0
+        tab_new.assert_called_once_with(
+            "https://x", label=None, headless=False, headed=True
+        )
+
+    def test_tab_new_rejects_headless_and_headed_together(self, monkeypatch):
+        tab_new = MagicMock()
+        monkeypatch.setattr(tabs, "tab_new", tab_new)
+        result = runner.invoke(
+            app, ["tab", "new", "https://x", "--headless", "--headed"]
+        )
+        assert result.exit_code != 0
+        tab_new.assert_not_called()
 
     def test_tab_new_with_label(self, monkeypatch):
         tab_new = MagicMock()
         monkeypatch.setattr(tabs, "tab_new", tab_new)
         result = runner.invoke(app, ["tab", "new", "https://x", "--label", "docs"])
         assert result.exit_code == 0
-        tab_new.assert_called_once_with("https://x", label="docs", headless=False)
+        tab_new.assert_called_once_with(
+            "https://x", label="docs", headless=False, headed=False
+        )
 
     def test_tab_new_extract_and_label_errors(self, monkeypatch):
         tab_new_extract = MagicMock()
@@ -297,6 +346,26 @@ class TestTabsAndWindows:
             markdown=True,
             close=False,
             headless=False,
+            headed=False,
+            snapshot=False,
+            until_stable=False,
+            timeout=30.0,
+            stable_rounds=2,
+        )
+
+    def test_tab_new_extract_headed(self, monkeypatch):
+        tab_new_extract = MagicMock(return_value="# Title")
+        monkeypatch.setattr(tabs, "tab_new_extract", tab_new_extract)
+        result = runner.invoke(
+            app, ["tab", "new", "https://x", "--extract", "--headed"]
+        )
+        assert result.exit_code == 0
+        tab_new_extract.assert_called_once_with(
+            "https://x",
+            markdown=True,
+            close=False,
+            headless=False,
+            headed=True,
             snapshot=False,
             until_stable=False,
             timeout=30.0,
@@ -315,6 +384,7 @@ class TestTabsAndWindows:
             markdown=False,
             close=True,
             headless=False,
+            headed=False,
             snapshot=False,
             until_stable=False,
             timeout=30.0,
@@ -333,6 +403,7 @@ class TestTabsAndWindows:
             markdown=True,
             close=False,
             headless=False,
+            headed=False,
             snapshot=True,
             until_stable=False,
             timeout=30.0,
@@ -362,6 +433,7 @@ class TestTabsAndWindows:
             markdown=True,
             close=False,
             headless=False,
+            headed=False,
             snapshot=False,
             until_stable=True,
             timeout=15.0,

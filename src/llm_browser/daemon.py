@@ -25,8 +25,10 @@ from seleniumbase import sb_cdp
 from llm_browser import session
 
 
-def _run(headless: bool) -> None:
-    driver = sb_cdp.Chrome(headless=headless, user_data_dir=str(session.profile_dir()))
+def _run(headless: bool, headed: bool) -> None:
+    driver = sb_cdp.Chrome(
+        headless=headless, headed=headed, user_data_dir=str(session.profile_dir())
+    )
 
     def _shutdown(_signum, _frame) -> None:
         try:
@@ -48,9 +50,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="llm-browser persistent session daemon"
     )
-    parser.add_argument("--headless", action="store_true")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--headless", action="store_true")
+    group.add_argument("--headed", action="store_true")
     args = parser.parse_args()
-    _run(headless=args.headless)
+    _run(headless=args.headless, headed=args.headed)
 
 
 if __name__ == "__main__":
