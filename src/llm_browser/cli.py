@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import typer
 
+from llm_browser import __version__
 from llm_browser.commands import (
     captcha,
     capture,
@@ -50,6 +51,25 @@ cookies_app = typer.Typer(help="Manage cookies.")
 storage_app = typer.Typer(help="Manage local/session storage.")
 tab_app = typer.Typer(help="Manage tabs.")
 window_app = typer.Typer(help="Manage windows.")
+
+def _version_callback(value: bool) -> None:
+    if value:
+        print(f"llm-browser {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the version and exit.",
+    ),
+) -> None:
+    pass
+
 
 app.add_typer(get_app, name="get")
 app.add_typer(is_app, name="is")

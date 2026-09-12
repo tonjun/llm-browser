@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 from typer.testing import CliRunner
 
+from llm_browser import __version__
 from llm_browser.browser import (
     captcha,
     capture,
@@ -42,6 +43,12 @@ def test_app_help_lists_top_level_commands():
     assert result.exit_code == 0
     assert "open" in result.output
     assert "snapshot" in result.output
+
+
+def test_version_flag_prints_version_and_exits():
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == f"llm-browser {__version__}"
 
 
 class TestNavigation:
