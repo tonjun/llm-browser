@@ -5,7 +5,7 @@ from __future__ import annotations
 import typer
 
 from llm_browser.browser import tabs
-from llm_browser.commands import _print
+from llm_browser.commands import _print, _reject_headless_and_headed
 
 
 def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
@@ -59,8 +59,15 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
             "--headless",
             help="Run headless if a new session needs to be started.",
         ),
+        headed: bool = typer.Option(
+            False,
+            "--headed",
+            help="Force a real visible browser window if a new session "
+            "needs to be started (skips the Xvfb fallback on Linux).",
+        ),
     ) -> None:
         """Open a new tab."""
+        _reject_headless_and_headed(headless, headed)
         if extract:
             if not url:
                 raise typer.BadParameter("URL is required when using --extract.")
@@ -74,6 +81,7 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
                     markdown=not text,
                     close=close,
                     headless=headless,
+                    headed=headed,
                     snapshot=snapshot,
                     until_stable=until_stable,
                     timeout=timeout,
@@ -85,7 +93,7 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
                 raise typer.BadParameter(
                     "--until-stable/--stable-rounds/--timeout require --extract."
                 )
-            tabs.tab_new(url, label=label, headless=headless)
+            tabs.tab_new(url, label=label, headless=headless, headed=headed)
 
     @tab_app.command("list")
     def tab_list() -> None:

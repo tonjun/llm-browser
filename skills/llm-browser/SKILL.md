@@ -46,10 +46,14 @@ same task share state (cookies, logins, open tabs) without you having
 to do anything — just call `open` again to navigate the existing
 session.
 
-- `--headless` only matters on the *first* `open` that spawns the
-  daemon. If a session is already running, a later `--headless` is
-  silently ignored (with a printed note) — run `llm-browser close`
-  first if you need to switch modes.
+- `--headless`/`--headed` only matter on the *first* `open` that spawns
+  the daemon. If a session is already running, a later `--headless` or
+  `--headed` is silently ignored (with a printed note) — run
+  `llm-browser close` first if you need to switch modes. The two flags
+  are mutually exclusive on the same command. `--headed` forces a real
+  visible window; on Linux, the default with neither flag passed is a
+  real (non-headless) Chrome inside an auto-started, invisible Xvfb
+  display, which looks headless even though it technically isn't.
 - `llm-browser close` shuts the daemon (and Chrome) down.
   Always close when a task is finished so a background Chrome instance
   doesn't linger.

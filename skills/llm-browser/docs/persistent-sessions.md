@@ -62,11 +62,18 @@ shut down within the timeout, `close` falls back to the same process-group
 kill described above and clears the state file itself. Running `close`
 with no session running is a no-op that reports as much.
 
-## `--headless`
+## `--headless` / `--headed`
 
-This flag only has an effect the moment the daemon is first spawned — it
-configures how that one long-lived Chrome instance is launched. If a
-session is already running and you pass `--headless` on a later `open`,
-it's ignored (with a printed note) rather than trying to reconfigure a
-browser that's already up; run `llm-browser close` first if you need to
-switch modes.
+These flags only have an effect the moment the daemon is first spawned —
+they configure how that one long-lived Chrome instance is launched. If a
+session is already running and you pass `--headless` or `--headed` on a
+later `open`, it's ignored (with a printed note) rather than trying to
+reconfigure a browser that's already up; run `llm-browser close` first if
+you need to switch modes. `--headless` and `--headed` can't be combined on
+the same command — passing both is a validation error.
+
+`--headed` forces a real, visible Chrome window. On Linux, SeleniumBase's
+default when neither flag is passed is to run Chrome for real (not
+`--headless`) but inside an invisible, auto-started Xvfb virtual display —
+which looks headless to you even though it isn't literally headless Chrome.
+Pass `--headed` to skip that fallback and get an actual window on screen.

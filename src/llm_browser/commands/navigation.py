@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 
 from llm_browser.browser import core, navigation
+from llm_browser.commands import _reject_headless_and_headed
 
 
 def register(app: typer.Typer) -> None:
@@ -14,13 +15,20 @@ def register(app: typer.Typer) -> None:
         headless: bool = typer.Option(
             False, "--headless", help="Run the browser headlessly."
         ),
+        headed: bool = typer.Option(
+            False,
+            "--headed",
+            help="Force a real visible browser window (skips the Xvfb "
+            "fallback on Linux).",
+        ),
     ) -> None:
         """Open URL in a SeleniumBase CDP Mode browser session.
 
         The browser session is persistent: the first call starts a
         background browser and leaves it running; later calls reuse it.
         """
-        core.open_url(url, headless=headless)
+        _reject_headless_and_headed(headless, headed)
+        core.open_url(url, headless=headless, headed=headed)
 
     @app.command()
     def close() -> None:

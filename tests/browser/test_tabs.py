@@ -61,6 +61,42 @@ def test_tab_new_without_url(d):
     d.open_new_tab.assert_called_once_with(None)
 
 
+class TestTabNewHeadlessHeaded:
+    def test_forwards_headless_and_headed_to_ensure_session(self, d):
+        d.get_tabs.return_value = [_tab("t0")]
+        tabs.tab_new("https://example.com", headed=True)
+        tabs.core.ensure_session.assert_called_once_with(headless=False, headed=True)
+
+    def test_warns_when_headless_ignored_for_existing_session(
+        self, d, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(tabs.session, "read_state", lambda: object())
+        monkeypatch.setattr(tabs.session, "is_daemon_alive", lambda s: True)
+        d.get_tabs.return_value = [_tab("t0")]
+
+        tabs.tab_new("https://example.com", headless=True)
+
+        assert "Note: --headless is ignored" in capsys.readouterr().err
+
+    def test_warns_when_headed_ignored_for_existing_session(
+        self, d, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(tabs.session, "read_state", lambda: object())
+        monkeypatch.setattr(tabs.session, "is_daemon_alive", lambda s: True)
+        d.get_tabs.return_value = [_tab("t0")]
+
+        tabs.tab_new("https://example.com", headed=True)
+
+        assert "Note: --headed is ignored" in capsys.readouterr().err
+
+    def test_no_warning_when_starting_fresh(self, d, capsys):
+        # No session running yet (the isolated_state_dir fixture makes
+        # is_daemon_alive False), so no warning even with headless/headed.
+        d.get_tabs.return_value = [_tab("t0")]
+        tabs.tab_new("https://example.com", headless=True)
+        assert "Note:" not in capsys.readouterr().err
+
+
 class TestTabNewLabel:
     def test_labels_the_newest_tab(self, d, labels):
         d.get_tabs.return_value = [_tab("t0"), _tab("t1")]
@@ -255,3 +291,17 @@ class TestTabNewExtract:
         monkeypatch.setattr(tabs.interaction, "scroll_until_stable", scroll_until_stable)
         tabs.tab_new_extract("https://example.com")
         scroll_until_stable.assert_not_called()
+
+    def test_forwards_headless_and_headed_to_ensure_session(self, d):
+        tabs.tab_new_extract("https://example.com", headed=True)
+        tabs.core.ensure_session.assert_called_once_with(headless=False, headed=True)
+
+    def test_warns_when_headed_ignored_for_existing_session(
+        self, d, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(tabs.session, "read_state", lambda: object())
+        monkeypatch.setattr(tabs.session, "is_daemon_alive", lambda s: True)
+
+        tabs.tab_new_extract("https://example.com", headed=True)
+
+        assert "Note: --headed is ignored" in capsys.readouterr().err

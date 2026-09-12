@@ -10,6 +10,8 @@ from __future__ import annotations
 import json as json_module
 from typing import Any
 
+import typer
+
 
 def _print(result: Any) -> None:
     if result is None:
@@ -18,3 +20,8 @@ def _print(result: Any) -> None:
         print(result)
     else:
         print(json_module.dumps(result, indent=2, default=str))
+
+
+def _reject_headless_and_headed(headless: bool, headed: bool) -> None:
+    if headless and headed:
+        raise typer.BadParameter("--headless and --headed can't be combined.")
