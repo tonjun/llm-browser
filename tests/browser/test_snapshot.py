@@ -569,3 +569,100 @@ class TestFindAxIdForSelector:
 
         with pytest.raises(ValueError, match="No accessibility node found"):
             snap._find_ax_id_for_selector(MagicMock(), index, "#go")
+
+
+class TestSnapshotRefDedup:
+    def test_aliasing_ax_nodes_share_one_ref_and_href(self, monkeypatch):
+        # Two AX nodes (a "link" and a sibling "generic" wrapper) backed by
+        # the *same* DOM element, as Chrome's AX tree can produce for a
+        # compound/aliasing node - e.g. old.reddit.com's "NEXT >" link. Only
+        # one data-llmb-ref value can ever live on that one DOM element, so
+        # both nodes must end up sharing the ref that's actually tagged.
+        root = _ax_node("1", "RootWebArea", "", None, child_ids=["2", "3"])
+        link = _ax_node("2", "link", "NEXT ›", 99)
+        wrapper = _ax_node("3", "generic", "footer", 99)
+
+        driver = MagicMock()
+        driver.evaluate.side_effect = [
+            None,  # clear stale refs
+            json.dumps({"e1": "https://example.com/next"}),  # href lookup
+        ]
+        monkeypatch.setattr(snap, "with_driver", lambda fn: fn(driver))
+
+        # Call order: accessibility.enable, dom.enable, dom.get_document,
+        # accessibility.get_full_ax_tree, then one
+        # push_nodes_by_backend_ids_to_frontend/set_attribute_value pair per
+        # *distinct* DOM element - exactly one pair here since both AX nodes
+        # share backend_dom_node_id=99.
+        calls = {"n": 0}
+
+        def fake_send(d, cmd):
+            calls["n"] += 1
+            if calls["n"] == 4:
+                return [root, link, wrapper]
+            if calls["n"] == 5:
+                return [501]
+            return None
+
+        monkeypatch.setattr(snap, "_cdp_send", fake_send)
+
+        out = json.loads(snap.snapshot(as_json=True))
+
+        # Only one push_nodes_by_backend_ids_to_frontend/set_attribute_value
+        # round-trip for the shared backend_dom_node_id, not two - i.e. no
+        # 7th _cdp_send call for a second element tag attempt.
+        assert calls["n"] == 6
+
+        link_item = next(item for item in out if item["role"] == "link")
+        wrapper_item = next(item for item in out if item["role"] == "generic")
+        assert link_item["ref"] == wrapper_item["ref"] == "@e1"
+        assert (
+            link_item["href"]
+            == wrapper_item["href"]
+            == "https://example.com/next"
+        )
+
+
+class TestSnapshotPushNodesResync:
+    def test_resyncs_and_retries_after_empty_push_nodes_result(self, monkeypatch):
+        # Observed on real long pages (old.reddit.com search results):
+        # pushNodesByBackendIdsToFrontend can start returning empty for
+        # every subsequent call after enough push/set-attribute round-trips,
+        # as if CDP's DOM domain node-tracking state got invalidated -
+        # re-issuing DOM.getDocument() and retrying once reliably recovers
+        # it. Without the resync, one such failure silently drops the ref
+        # (and therefore href) for every node tagged afterwards.
+        root = _ax_node("1", "RootWebArea", "", None, child_ids=["2"])
+        link = _ax_node("2", "link", "NEXT ›", 99)
+
+        driver = MagicMock()
+        driver.evaluate.side_effect = [
+            None,  # clear stale refs
+            json.dumps({"e1": "https://example.com/next"}),  # href lookup
+        ]
+        monkeypatch.setattr(snap, "with_driver", lambda fn: fn(driver))
+
+        # Call order: accessibility.enable, dom.enable, dom.get_document,
+        # accessibility.get_full_ax_tree, push_nodes (fails empty),
+        # dom.get_document (resync), push_nodes (retry, succeeds),
+        # set_attribute_value.
+        calls = {"n": 0}
+
+        def fake_send(d, cmd):
+            calls["n"] += 1
+            if calls["n"] == 4:
+                return [root, link]
+            if calls["n"] == 5:
+                return None
+            if calls["n"] == 7:
+                return [501]
+            return None
+
+        monkeypatch.setattr(snap, "_cdp_send", fake_send)
+
+        out = json.loads(snap.snapshot(as_json=True))
+
+        assert calls["n"] == 8
+        link_item = next(item for item in out if item["role"] == "link")
+        assert link_item["ref"] == "@e1"
+        assert link_item["href"] == "https://example.com/next"

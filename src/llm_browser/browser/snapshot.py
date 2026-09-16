@@ -540,6 +540,17 @@ def snapshot(
         levels = _filter_and_level(pairs, interactive, compact)
 
         ref_n = 0
+        # More than one AX node can share the same backend_dom_node_id
+        # (e.g. a compound/aliasing node covering the same <a> as its
+        # "real" link node). data-llmb-ref is a single DOM attribute, so
+        # tagging the same element twice would silently overwrite the
+        # first node's ref value in the DOM - that node's ref would then
+        # match nothing in the DOM (breaking @eN selector resolution) and
+        # its href would come back missing from the bulk lookup below.
+        # Tracking already-tagged elements makes tagging idempotent per
+        # DOM element: every aliasing node shares the one ref actually
+        # written to the DOM.
+        dom_id_to_ref: dict[Any, str] = {}
         for _, node in levels:
             # Text-node AX roles (Chrome's "StaticText"/"InlineTextBox"/
             # "LineBreak" internal roles) back onto DOM Text nodes, not
@@ -547,6 +558,10 @@ def snapshot(
             # pushNodesByBackendIdsToFrontend itself comes back empty for
             # them. Only Element-backed nodes are taggable/actionable.
             if node.backend_dom_node_id is None or node.role in _NON_ELEMENT_ROLES:
+                continue
+            existing_ref = dom_id_to_ref.get(node.backend_dom_node_id)
+            if existing_ref is not None:
+                node.ref = existing_ref
                 continue
             ref_n += 1
             node.ref = f"e{ref_n}"
@@ -556,6 +571,26 @@ def snapshot(
                     backend_node_ids=[node.backend_dom_node_id]
                 ),
             )
+            if not node_ids:
+                # Observed on long/dynamic real pages (e.g. old.reddit.com
+                # search results with 900+ AX nodes): after enough
+                # push/set-attribute round-trips, CDP's DOM domain silently
+                # starts returning an empty result for every subsequent
+                # pushNodesByBackendIdsToFrontend call for the rest of this
+                # snapshot, as if its internal node-tracking state had been
+                # invalidated - re-issuing DOM.getDocument() to resync that
+                # state and retrying once reliably recovers it. Without this,
+                # one early failure (e.g. on an unrelated node) silently
+                # drops every ref/href for everything tagged afterwards,
+                # including nodes far later in the tree like a page's
+                # pagination link.
+                _cdp_send(d, mycdp.dom.get_document())
+                node_ids = _cdp_send(
+                    d,
+                    mycdp.dom.push_nodes_by_backend_ids_to_frontend(
+                        backend_node_ids=[node.backend_dom_node_id]
+                    ),
+                )
             if not node_ids:
                 # Shouldn't happen for an Element node, but don't let one
                 # unexpected miss blow up the whole snapshot.
@@ -568,6 +603,7 @@ def snapshot(
                     node_id=node_ids[0], name=_REF_ATTR, value=node.ref
                 ),
             )
+            dom_id_to_ref[node.backend_dom_node_id] = node.ref
 
         hrefs: dict = {}
         # Markdown rendering needs hrefs to produce [text](href) links even
