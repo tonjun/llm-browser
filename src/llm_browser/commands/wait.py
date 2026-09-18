@@ -28,6 +28,16 @@ def register(app: typer.Typer) -> None:
         timeout: float = typer.Option(25.0, "--timeout", help="Timeout in seconds."),
     ) -> None:
         """Wait for an element, text, URL, timeout, or JS condition."""
+        if (
+            selector is None
+            and ms is None
+            and text is None
+            and url is None
+            and fn is None
+        ):
+            raise typer.BadParameter(
+                "wait needs a selector or one of --ms/--text/--url/--fn."
+            )
         wait_.wait_for(
             selector=selector, ms=ms, text=text, url=url, js_fn=fn, timeout=timeout
         )

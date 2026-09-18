@@ -35,7 +35,7 @@ class TestScreenshot:
     def test_no_path_generates_one_under_state_dir(self, d):
         d.loop.run_until_complete.return_value = "ZmFrZQ=="
         result = capture.screenshot(None)
-        assert result.startswith(str(session.state_dir()))
+        assert result.startswith(str(session.state_dir() / "screenshots"))
         assert result.endswith(".png")
 
     def test_default_format_sends_png_and_no_quality(self, d):
@@ -83,7 +83,9 @@ class TestScreenshot:
         with pytest.raises(RuntimeError):
             capture.screenshot()
 
-    def test_stdout_returns_data_uri_without_writing_a_file(self, d, tmp_path, monkeypatch):
+    def test_stdout_returns_data_uri_without_writing_a_file(
+        self, d, tmp_path, monkeypatch
+    ):
         d.loop.run_until_complete.return_value = "ZmFrZS1wbmctYnl0ZXM="
         monkeypatch.chdir(tmp_path)
         result = capture.screenshot(to_stdout=True)

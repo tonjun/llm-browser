@@ -16,9 +16,11 @@ shutting it down.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import signal
 import sys
+import time
 
 from seleniumbase import sb_cdp
 
@@ -43,7 +45,24 @@ def _run(headless: bool, headed: bool) -> None:
     port = driver.get_rd_port()
     session.write_state(pid=os.getpid(), host="127.0.0.1", port=port)
 
-    signal.pause()
+    # Block until told to stop (SIGTERM/SIGINT above) - or until Chrome
+    # itself goes away (user closed the last window, crash), in which case
+    # a plain signal.pause() would leave this process and a stale
+    # session.json behind until the next `open` cleaned them up.
+    _wait_for_chrome_exit("127.0.0.1", port)
+    with contextlib.suppress(Exception):
+        driver.quit()
+    session.clear_state()
+
+
+# How often to check that Chrome's debug port is still answering.
+_CHROME_POLL_INTERVAL = 2.0
+
+
+def _wait_for_chrome_exit(host: str, port: int) -> None:
+    """Return once Chrome's CDP port stops accepting connections."""
+    while session._port_open(host, port):
+        time.sleep(_CHROME_POLL_INTERVAL)
 
 
 def main() -> None:

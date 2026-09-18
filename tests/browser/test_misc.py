@@ -43,6 +43,13 @@ class TestReadPage:
         assert misc.read_page("#a") == "scoped text"
         soup.select_one.assert_called_once_with("#a")
 
+    def test_resolves_ref_selector(self, d):
+        soup = MagicMock()
+        soup.select_one.return_value.get_text.return_value = "ref text"
+        d.get_beautiful_soup.return_value = soup
+        assert misc.read_page("@e7") == "ref text"
+        soup.select_one.assert_called_once_with('[data-llmb-ref="e7"]')
+
     def test_selector_matches_nothing_returns_empty(self, d):
         soup = MagicMock()
         soup.select_one.return_value = None

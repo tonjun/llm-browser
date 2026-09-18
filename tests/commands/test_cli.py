@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
+import pytest
 from typer.testing import CliRunner
 
 from llm_browser import __version__
@@ -178,6 +179,13 @@ class TestInteraction:
         assert result.exit_code == 0
         scroll.assert_called_once_with("down", 100)
 
+    def test_scroll_default_px(self, monkeypatch):
+        scroll = MagicMock()
+        monkeypatch.setattr(interaction, "scroll", scroll)
+        result = runner.invoke(app, ["scroll"])
+        assert result.exit_code == 0
+        scroll.assert_called_once_with("down", 300)
+
     def test_scroll_until_count(self, monkeypatch):
         scroll_until_count = MagicMock(return_value=12)
         monkeypatch.setattr(interaction, "scroll_until_count", scroll_until_count)
@@ -196,14 +204,65 @@ class TestInteraction:
         )
         assert result.exit_code == 0
         assert result.output.strip() == "12"
-        scroll_until_count.assert_called_once_with(".item", 10, px=300, timeout=5.0)
+        scroll_until_count.assert_called_once_with(".item", 10, px=2000, timeout=5.0)
 
     def test_scroll_until_count_requires_selector(self, monkeypatch):
         result = runner.invoke(app, ["scroll", "down", "--until-count", "10"])
         assert result.exit_code != 0
 
 
+class TestErrorReporting:
+    def test_run_prints_one_line_error_and_exits_1(self, monkeypatch, capsys):
+        import sys
+
+        from llm_browser import cli
+
+        monkeypatch.setattr(sys, "argv", ["llm-browser", "get", "title"])
+        monkeypatch.delenv("LLM_BROWSER_DEBUG", raising=False)
+        monkeypatch.setattr(
+            info,
+            "get_title",
+            MagicMock(side_effect=RuntimeError("No running session.")),
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            cli.run()
+        assert exc_info.value.code == 1
+        captured = capsys.readouterr()
+        assert captured.err.strip() == "error: No running session."
+        assert "Traceback" not in captured.err
+
+    def test_run_reraises_when_debug_set(self, monkeypatch):
+        import sys
+
+        from llm_browser import cli
+
+        monkeypatch.setattr(sys, "argv", ["llm-browser", "get", "title"])
+        monkeypatch.setenv("LLM_BROWSER_DEBUG", "1")
+        monkeypatch.setattr(info, "get_title", MagicMock(side_effect=RuntimeError("x")))
+        with pytest.raises(RuntimeError, match="x"):
+            cli.run()
+
+    def test_format_error_collapses_whitespace_and_empty_messages(self):
+        from llm_browser import cli
+
+        assert cli.format_error(Exception("\n Element {#a} was not found!")) == (
+            "Element {#a} was not found!"
+        )
+        assert cli.format_error(KeyError()) == "KeyError"
+
+    def test_no_pretty_exceptions(self):
+        assert app.pretty_exceptions_enable is False
+
+
 class TestWait:
+    def test_wait_without_criteria_is_a_usage_error(self, monkeypatch):
+        wait_for = MagicMock()
+        monkeypatch.setattr(wait_mod, "wait_for", wait_for)
+        result = runner.invoke(app, ["wait"])
+        assert result.exit_code != 0
+        assert "wait needs a selector" in result.output
+        wait_for.assert_not_called()
+
     def test_wait_forwards_all_options(self, monkeypatch):
         wait_for = MagicMock()
         monkeypatch.setattr(wait_mod, "wait_for", wait_for)
@@ -443,9 +502,7 @@ class TestTabsAndWindows:
     def test_tab_new_until_stable_requires_extract(self, monkeypatch):
         tab_new = MagicMock()
         monkeypatch.setattr(tabs, "tab_new", tab_new)
-        result = runner.invoke(
-            app, ["tab", "new", "https://x", "--until-stable"]
-        )
+        result = runner.invoke(app, ["tab", "new", "https://x", "--until-stable"])
         assert result.exit_code != 0
         tab_new.assert_not_called()
 
@@ -638,7 +695,9 @@ class TestCapture:
         monkeypatch.setattr(
             capture,
             "screenshot",
-            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: "/tmp/out.png",
+            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: (
+                "/tmp/out.png"
+            ),
         )
         result = runner.invoke(app, ["screenshot"])
         assert result.exit_code == 0
@@ -647,7 +706,9 @@ class TestCapture:
     def test_screenshot_full(self, monkeypatch):
         calls = {}
 
-        def fake_screenshot(path, full_page=False, to_stdout=False, format_="png", quality=None):
+        def fake_screenshot(
+            path, full_page=False, to_stdout=False, format_="png", quality=None
+        ):
             calls["full_page"] = full_page
             return "/tmp/out.png"
 
@@ -659,7 +720,9 @@ class TestCapture:
     def test_screenshot_stdout(self, monkeypatch):
         calls = {}
 
-        def fake_screenshot(path, full_page=False, to_stdout=False, format_="png", quality=None):
+        def fake_screenshot(
+            path, full_page=False, to_stdout=False, format_="png", quality=None
+        ):
             calls["to_stdout"] = to_stdout
             return "data:image/png;base64,ZmFrZQ=="
 
@@ -673,7 +736,9 @@ class TestCapture:
         monkeypatch.setattr(
             capture,
             "screenshot",
-            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: "/tmp/out.png",
+            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: (
+                "/tmp/out.png"
+            ),
         )
         result = runner.invoke(app, ["screenshot", "--stdout", "/tmp/out.png"])
         assert result.exit_code != 0
@@ -681,7 +746,9 @@ class TestCapture:
     def test_screenshot_format_and_quality_forwarded(self, monkeypatch):
         calls = {}
 
-        def fake_screenshot(path, full_page=False, to_stdout=False, format_="png", quality=None):
+        def fake_screenshot(
+            path, full_page=False, to_stdout=False, format_="png", quality=None
+        ):
             calls["format_"] = format_
             calls["quality"] = quality
             return "/tmp/out.jpg"
@@ -698,7 +765,9 @@ class TestCapture:
         monkeypatch.setattr(
             capture,
             "screenshot",
-            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: "/tmp/out.png",
+            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: (
+                "/tmp/out.png"
+            ),
         )
         result = runner.invoke(app, ["screenshot", "--quality", "40"])
         assert result.exit_code != 0
@@ -707,7 +776,9 @@ class TestCapture:
         monkeypatch.setattr(
             capture,
             "screenshot",
-            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: "/tmp/out.jpg",
+            lambda path, full_page=False, to_stdout=False, format_="png", quality=None: (
+                "/tmp/out.jpg"
+            ),
         )
         result = runner.invoke(
             app, ["screenshot", "--format", "jpeg", "--quality", "101"]

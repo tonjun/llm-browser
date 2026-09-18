@@ -53,9 +53,9 @@ llm-browser uncheck <sel>               # Uncheck a checkbox (no-op if already u
 llm-browser select <sel> <value...>     # Select one or more dropdown options by value
 llm-browser drag <src> <dst>            # Drag and drop
 llm-browser upload <sel> <file...>      # Upload file(s) to a file input
-llm-browser scroll <dir> [px]           # up | down | left | right | top | bottom
-llm-browser scroll down --until-count <n> --selector <css> [--timeout s]  # scroll-and-collect
-llm-browser scroll down 2000 --until-stable [--stable-rounds n] [--timeout s]  # scroll to end of virtualized/infinite-scroll content
+llm-browser scroll <dir> [px]           # up | down | left | right | top | bottom (px default 300)
+llm-browser scroll down --until-count <n> --selector <css> [--timeout s]  # scroll-and-collect (2000px steps)
+llm-browser scroll down --until-stable [--stable-rounds n] [--timeout s]  # scroll to end of virtualized/infinite-scroll content (2000px steps)
 llm-browser scrollintoview <sel>        # Scroll an element into view
 ```
 
@@ -70,8 +70,11 @@ Caveats:
 - `select` with more than one value has no native multi-select helper;
   it's done via a small JS loop setting `.selected` on each matching
   `<option>` and firing one `change` event.
-- `scroll left`/`right` have no dedicated SeleniumBase method; done via
-  `window.scrollBy(...)`.
+- All four directions scroll by real pixels via `window.scrollBy(...)`,
+  not SeleniumBase's `scroll_down()`/`scroll_up()`, whose argument is a
+  *percentage of the viewport height* despite the name. `[px]` defaults
+  to 300 for a plain scroll and 2000 per step for `--until-count` /
+  `--until-stable`.
 - `--until-count` formalizes the infinite-scroll pagination loop: scrolls
   down, prints the resulting element count, and repeats until `--selector`
   matches at least `<n>` elements, the count stops growing between scrolls
@@ -133,7 +136,7 @@ llm-browser is online          # Does the browser have network connectivity?
 ## Screenshots & PDF
 
 ```bash
-llm-browser screenshot [path] [--full]                     # Save a screenshot (--full for full-page)
+llm-browser screenshot [path] [--full]                     # Save a screenshot (--full for full-page; default path under ~/.llm-browser/screenshots/)
 llm-browser screenshot --stdout                            # Print a data:image/png;base64,... URI instead of writing a file
 llm-browser screenshot --format jpeg --quality 60 out.jpg  # Lossy jpeg/webp to shrink the file size
 llm-browser pdf <path>                                     # Save the current page as a PDF
@@ -182,7 +185,7 @@ llm-browser tab new <url> --extract --until-stable [--stable-rounds n] [--timeou
                                   # extracting - for virtualized/infinite-scroll
                                   # pages (e.g. www.reddit.com, X/Twitter); requires
                                   # --extract
-llm-browser tab list             # List open tabs (index, target_id, label, url, title)
+llm-browser tab list             # List open tabs (index, target_id, label, url, title, active)
 llm-browser tab switch <index|label>   # Switch to a tab by index (-1 = newest) or label
 llm-browser tab close [index|label]    # Close a tab (default: current)
 llm-browser window new [url]     # Open a new window
@@ -203,10 +206,11 @@ the daemon remembers which tab was last made active (via `tab new` or
 `tab switch`) in `~/.llm-browser/active_tab`, keyed on the same
 `targetId`. So `llm-browser tab switch docs && llm-browser extract` now
 extracts the `docs` tab, not just whichever tab happens to be newest -
-`tab switch`/`tab new` set the tab every later command (`extract`,
-`click`, `snapshot`, ...) operates on until something switches again.
-Closing that tab clears the pointer, falling back to the newest
-remaining tab.
+`tab switch`/`tab new` set the tab every later command (`open`,
+`extract`, `click`, `snapshot`, ...) operates on until something
+switches again. Closing that tab clears the pointer, falling back to the
+newest remaining tab. `tab list` reports `"active": true` on the tab the
+next command will attach to.
 
 **Important:** there is still no persistent `t1`/`t2` stable-index
 counter like agent-browser's. `tab list`'s plain integer indices are
@@ -244,7 +248,7 @@ navigation, no cross-origin iframe inlining).
 
 ```bash
 llm-browser highlight <sel>          # Highlight an element
-llm-browser read [sel]               # Read the current page as plain text
+llm-browser read [sel]               # Read the current page as plain text (CSS selector or @eN ref)
 llm-browser read <url> [--markdown]  # Fetch a URL directly (no browser tab)
 llm-browser extract [--text]         # Readability-style main content of the open page (Markdown by default)
 llm-browser internalize-links        # Rewrite target="_blank" links to same-tab

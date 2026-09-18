@@ -541,7 +541,7 @@ class TestFindAxIdForSelector:
             if calls["n"] == 1:
                 return SimpleNamespace(node_id=1)
             if calls["n"] == 2:
-                return SimpleNamespace(node_id=5)
+                return 5  # DOM.querySelector returns a bare NodeId
             return SimpleNamespace(backend_node_id=42)
 
         monkeypatch.setattr(snap, "_cdp_send", fake_send)
@@ -560,7 +560,7 @@ class TestFindAxIdForSelector:
             if fake_send._step == 1:
                 return SimpleNamespace(node_id=1)
             if fake_send._step == 2:
-                return SimpleNamespace(node_id=5)
+                return 5  # DOM.querySelector returns a bare NodeId
             return SimpleNamespace(backend_node_id=999)
 
         monkeypatch.setattr(snap, "_cdp_send", fake_send)
@@ -569,6 +569,11 @@ class TestFindAxIdForSelector:
 
         with pytest.raises(ValueError, match="No accessibility node found"):
             snap._find_ax_id_for_selector(MagicMock(), index, "#go")
+
+
+def _wire(cmd):
+    """Decode a mycdp command generator into its {"method", "params"} dict."""
+    return next(cmd)
 
 
 class TestSnapshotRefDedup:
@@ -590,48 +595,144 @@ class TestSnapshotRefDedup:
         monkeypatch.setattr(snap, "with_driver", lambda fn: fn(driver))
 
         # Call order: accessibility.enable, dom.enable, dom.get_document,
-        # accessibility.get_full_ax_tree, then one
-        # push_nodes_by_backend_ids_to_frontend/set_attribute_value pair per
-        # *distinct* DOM element - exactly one pair here since both AX nodes
-        # share backend_dom_node_id=99.
-        calls = {"n": 0}
+        # accessibility.get_full_ax_tree, then ONE
+        # push_nodes_by_backend_ids_to_frontend for every distinct DOM
+        # element - a single id here since both AX nodes share
+        # backend_dom_node_id=99.
+        calls = []
 
         def fake_send(d, cmd):
-            calls["n"] += 1
-            if calls["n"] == 4:
+            calls.append(_wire(cmd))
+            if len(calls) == 4:
                 return [root, link, wrapper]
-            if calls["n"] == 5:
+            if len(calls) == 5:
                 return [501]
             return None
 
         monkeypatch.setattr(snap, "_cdp_send", fake_send)
+        send_many = MagicMock(return_value=[None])
+        monkeypatch.setattr(snap, "_cdp_send_many", send_many)
 
         out = json.loads(snap.snapshot(as_json=True))
 
-        # Only one push_nodes_by_backend_ids_to_frontend/set_attribute_value
-        # round-trip for the shared backend_dom_node_id, not two - i.e. no
-        # 7th _cdp_send call for a second element tag attempt.
-        assert calls["n"] == 6
+        assert len(calls) == 5
+        assert calls[4]["method"] == "DOM.pushNodesByBackendIdsToFrontend"
+        assert calls[4]["params"]["backendNodeIds"] == [99]
+        # ... and one set_attribute_value for it, not two.
+        (_, sent), _ = send_many.call_args
+        assert [_wire(c)["params"] for c in sent] == [
+            {"nodeId": 501, "name": "data-llmb-ref", "value": "e1"}
+        ]
 
         link_item = next(item for item in out if item["role"] == "link")
         wrapper_item = next(item for item in out if item["role"] == "generic")
         assert link_item["ref"] == wrapper_item["ref"] == "@e1"
-        assert (
-            link_item["href"]
-            == wrapper_item["href"]
-            == "https://example.com/next"
-        )
+        assert link_item["href"] == wrapper_item["href"] == "https://example.com/next"
+
+
+class TestSnapshotBatchedTagging:
+    def _run(self, monkeypatch, push_results):
+        root = _ax_node("1", "RootWebArea", "", None, child_ids=["2", "3", "4"])
+        a = _ax_node("2", "link", "A", 11)
+        text = _ax_node("3", "StaticText", "plain", 12)
+        b = _ax_node("4", "button", "B", 13)
+        driver = MagicMock()
+        driver.evaluate.side_effect = [None, json.dumps({})]
+        monkeypatch.setattr(snap, "with_driver", lambda fn: fn(driver))
+        calls = []
+        pushes = iter(push_results)
+
+        def fake_send(d, cmd):
+            calls.append(_wire(cmd))
+            if calls[-1]["method"] == "Accessibility.getFullAXTree":
+                return [root, a, text, b]
+            if calls[-1]["method"] == "DOM.pushNodesByBackendIdsToFrontend":
+                return next(pushes)
+            return None
+
+        monkeypatch.setattr(snap, "_cdp_send", fake_send)
+        send_many = MagicMock(return_value=[])
+        monkeypatch.setattr(snap, "_cdp_send_many", send_many)
+        out = json.loads(snap.snapshot(as_json=True))
+        return calls, send_many, out
+
+    def test_one_push_for_all_elements_and_one_batched_attribute_write(
+        self, monkeypatch
+    ):
+        calls, send_many, out = self._run(monkeypatch, [[501, 503]])
+        pushes = [
+            c for c in calls if c["method"] == "DOM.pushNodesByBackendIdsToFrontend"
+        ]
+        # Text nodes aren't pushed at all; the two elements go in one call.
+        assert [p["params"]["backendNodeIds"] for p in pushes] == [[11, 13]]
+        send_many.assert_called_once()
+        (_, sent), _ = send_many.call_args
+        assert [_wire(c)["params"] for c in sent] == [
+            {"nodeId": 501, "name": "data-llmb-ref", "value": "e1"},
+            {"nodeId": 503, "name": "data-llmb-ref", "value": "e2"},
+        ]
+        assert [item["ref"] for item in out] == ["@e1", None, "@e2"]
+
+    def test_unpushable_node_is_skipped_without_a_ref_gap(self, monkeypatch):
+        # CDP reports a node it couldn't push as id 0: that one stays
+        # untagged and the next element still gets the next ref number.
+        _calls, send_many, out = self._run(monkeypatch, [[0, 503]])
+        (_, sent), _ = send_many.call_args
+        assert [_wire(c)["params"]["value"] for c in sent] == ["e1"]
+        assert [item["ref"] for item in out] == [None, None, "@e1"]
+
+    def test_gives_up_cleanly_if_push_fails_twice(self, monkeypatch):
+        calls, send_many, out = self._run(monkeypatch, [None, None])
+        assert [c["method"] for c in calls[-3:]] == [
+            "DOM.pushNodesByBackendIdsToFrontend",
+            "DOM.getDocument",
+            "DOM.pushNodesByBackendIdsToFrontend",
+        ]
+        send_many.assert_not_called()
+        assert all(item["ref"] is None for item in out)
+
+
+class TestSnapshotDepthForwarding:
+    def _calls(self, monkeypatch, **kwargs):
+        driver = MagicMock()
+        driver.evaluate.return_value = None
+        monkeypatch.setattr(snap, "with_driver", lambda fn: fn(driver))
+        calls = []
+
+        def fake_send(d, cmd):
+            calls.append(_wire(cmd))
+            if calls[-1]["method"] == "Accessibility.getFullAXTree":
+                return [_ax_node("1", "RootWebArea", "", None)]
+            if calls[-1]["method"] == "DOM.getDocument":
+                return MagicMock(node_id=1)
+            if calls[-1]["method"] == "DOM.querySelector":
+                return 7
+            if calls[-1]["method"] == "DOM.describeNode":
+                return MagicMock(backend_node_id=999)  # matches no AX node
+            return None
+
+        monkeypatch.setattr(snap, "_cdp_send", fake_send)
+        monkeypatch.setattr(snap, "_cdp_send_many", MagicMock(return_value=[]))
+        try:
+            snap.snapshot(**kwargs)
+        except ValueError:
+            pass  # selector tests: no AX node matches - fine, we only want the calls
+        return next(c for c in calls if c["method"] == "Accessibility.getFullAXTree")
+
+    def test_depth_is_forwarded_to_cdp_without_selector(self, monkeypatch):
+        assert self._calls(monkeypatch, depth=3)["params"] == {"depth": 3}
+
+    def test_depth_not_forwarded_with_selector(self, monkeypatch):
+        # Our depth is then measured from the selector's node, not the root.
+        assert self._calls(monkeypatch, depth=3, selector="#x")["params"] == {}
 
 
 class TestSnapshotPushNodesResync:
     def test_resyncs_and_retries_after_empty_push_nodes_result(self, monkeypatch):
         # Observed on real long pages (old.reddit.com search results):
-        # pushNodesByBackendIdsToFrontend can start returning empty for
-        # every subsequent call after enough push/set-attribute round-trips,
-        # as if CDP's DOM domain node-tracking state got invalidated -
-        # re-issuing DOM.getDocument() and retrying once reliably recovers
-        # it. Without the resync, one such failure silently drops the ref
-        # (and therefore href) for every node tagged afterwards.
+        # pushNodesByBackendIdsToFrontend can come back empty as if CDP's
+        # DOM domain node-tracking state got invalidated - re-issuing
+        # DOM.getDocument() and retrying once reliably recovers it.
         root = _ax_node("1", "RootWebArea", "", None, child_ids=["2"])
         link = _ax_node("2", "link", "NEXT ›", 99)
 
@@ -644,25 +745,54 @@ class TestSnapshotPushNodesResync:
 
         # Call order: accessibility.enable, dom.enable, dom.get_document,
         # accessibility.get_full_ax_tree, push_nodes (fails empty),
-        # dom.get_document (resync), push_nodes (retry, succeeds),
-        # set_attribute_value.
-        calls = {"n": 0}
+        # dom.get_document (resync), push_nodes (retry, succeeds).
+        calls = []
 
         def fake_send(d, cmd):
-            calls["n"] += 1
-            if calls["n"] == 4:
+            calls.append(_wire(cmd))
+            if len(calls) == 4:
                 return [root, link]
-            if calls["n"] == 5:
-                return None
-            if calls["n"] == 7:
+            if len(calls) == 7:
                 return [501]
             return None
 
         monkeypatch.setattr(snap, "_cdp_send", fake_send)
+        send_many = MagicMock(return_value=[None])
+        monkeypatch.setattr(snap, "_cdp_send_many", send_many)
 
         out = json.loads(snap.snapshot(as_json=True))
 
-        assert calls["n"] == 8
+        assert [c["method"] for c in calls[4:]] == [
+            "DOM.pushNodesByBackendIdsToFrontend",
+            "DOM.getDocument",
+            "DOM.pushNodesByBackendIdsToFrontend",
+        ]
+        send_many.assert_called_once()
         link_item = next(item for item in out if item["role"] == "link")
         assert link_item["ref"] == "@e1"
         assert link_item["href"] == "https://example.com/next"
+
+
+class TestCdpSendMany:
+    def test_gathers_all_commands_on_the_driver_loop(self):
+        import asyncio
+
+        driver = MagicMock()
+        driver.loop = asyncio.new_event_loop()
+        sent = []
+
+        async def _send(cmd):
+            sent.append(cmd)
+            return f"r{cmd}"
+
+        driver.page.send = _send
+        try:
+            assert snap._cdp_send_many(driver, ["a", "b", "c"]) == ["ra", "rb", "rc"]
+        finally:
+            driver.loop.close()
+        assert sent == ["a", "b", "c"]
+
+    def test_empty_is_a_no_op(self):
+        driver = MagicMock()
+        assert snap._cdp_send_many(driver, []) == []
+        driver.loop.run_until_complete.assert_not_called()

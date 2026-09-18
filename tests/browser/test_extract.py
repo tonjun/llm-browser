@@ -83,7 +83,7 @@ class TestSaveMarkdown:
 
         result = extract.save_markdown()
         try:
-            assert result.startswith(str(session.state_dir()))
+            assert result.startswith(str(session.state_dir() / "pages"))
             assert result.endswith(".md")
             assert Path(result).read_text() == "content"
         finally:

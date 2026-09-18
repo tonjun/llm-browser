@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import threading
@@ -18,10 +19,26 @@ def test_state_dir_creates_directory(tmp_path):
     assert path.is_dir()
 
 
+def test_state_dir_honors_home_env_var(tmp_path, monkeypatch):
+    custom = tmp_path / "agent-2"
+    monkeypatch.setenv("LLM_BROWSER_HOME", str(custom))
+    assert session.state_dir() == custom
+    assert custom.is_dir()
+    # Everything else hangs off it, so the profile moves too.
+    assert session.profile_dir() == custom / "profile"
+
+
 def test_profile_dir_creates_directory():
     path = session.profile_dir()
     assert path == session.state_dir() / "profile"
     assert path.is_dir()
+
+
+def test_screenshots_and_pages_dirs_are_created_under_state_dir():
+    assert session.screenshots_dir() == session.state_dir() / "screenshots"
+    assert session.screenshots_dir().is_dir()
+    assert session.pages_dir() == session.state_dir() / "pages"
+    assert session.pages_dir().is_dir()
 
 
 def test_log_file_path():
@@ -147,22 +164,30 @@ class TestSpawnLock:
     def test_acquires_lock_when_free(self):
         with session.spawn_lock() as acquired:
             assert acquired is True
-            assert session.lock_file().exists()
-        # Lock file is removed after the context exits.
-        assert not session.lock_file().exists()
 
     def test_reports_not_acquired_when_already_locked(self):
+        # Hold the flock from a separate fd, as another process would.
+        fd = os.open(session.lock_file(), os.O_CREAT | os.O_RDWR)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            with session.spawn_lock() as acquired:
+                assert acquired is False
+        finally:
+            os.close(fd)
+
+    def test_stale_lock_file_from_dead_holder_does_not_block(self):
+        # A leftover file (e.g. from a process killed mid-spawn) carries no
+        # lock once its holder is gone, so the next acquire must succeed.
         session.lock_file().write_text("999999")
         with session.spawn_lock() as acquired:
-            assert acquired is False
-        # The pre-existing lock file is left alone by a failed acquire.
-        assert session.lock_file().exists()
+            assert acquired is True
 
-    def test_removes_lock_file_even_on_exception(self):
+    def test_released_even_on_exception(self):
         with pytest.raises(RuntimeError), session.spawn_lock() as acquired:
             assert acquired is True
             raise RuntimeError("boom")
-        assert not session.lock_file().exists()
+        with session.spawn_lock() as again:
+            assert again is True
 
     def test_sequential_acquisitions_both_succeed(self):
         with session.spawn_lock() as first:
@@ -179,9 +204,8 @@ class TestCommandLock:
         """A caller already holding it (e.g. tab_new_extract wrapping
         several with_driver calls) can take it again without deadlocking
         on itself."""
-        with session.command_lock():
-            with session.command_lock():
-                pass  # would hang here if it weren't reentrant
+        with session.command_lock(), session.command_lock():
+            pass  # would hang here if it weren't reentrant
 
     def test_released_even_on_exception(self):
         with pytest.raises(RuntimeError), session.command_lock():

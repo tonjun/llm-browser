@@ -44,7 +44,7 @@ def screenshot(
             return f"data:image/{format_};base64,{data}"
 
         target = path or str(
-            session.state_dir()
+            session.screenshots_dir()
             / f"screenshot-{int(time.time() * 1000)}{_EXTENSIONS[format_]}"
         )
         pathlib.Path(target).write_bytes(base64.b64decode(data))

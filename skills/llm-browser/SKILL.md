@@ -113,7 +113,7 @@ llm-browser select @e4 value1 value2  # select one or more dropdown options by v
 llm-browser upload @e5 file1.pdf      # upload file(s) to a file input
 llm-browser scroll down 500           # up | down | left | right | top | bottom
 llm-browser scroll down --until-count <n> --selector <css>   # scroll until a selector count is reached
-llm-browser scroll down 2000 --until-stable                  # scroll until page height stops growing (virtualized/infinite-scroll)
+llm-browser scroll down --until-stable                       # scroll until page height stops growing (virtualized/infinite-scroll), 2000px steps
 llm-browser scrollintoview @e1        # scroll an element into view
 llm-browser drag @e1 @e2              # drag and drop
 ```

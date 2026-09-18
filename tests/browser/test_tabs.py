@@ -17,6 +17,8 @@ def d(monkeypatch):
     # without this, the real one runs and spawns an actual daemon + Chrome
     # window on the test machine.
     monkeypatch.setattr(tabs.core, "ensure_session", MagicMock())
+    # tab_new_extract polls document.readyState after opening the tab.
+    monkeypatch.setattr(tabs.core, "wait_for_load", MagicMock())
     return driver
 
 
@@ -39,7 +41,9 @@ def active_tab(monkeypatch):
     """In-memory stand-in for ``~/.llm-browser/active_tab``."""
     box: dict[str, str] = {}
     monkeypatch.setattr(tabs.session, "read_active_tab", lambda: box.get("id"))
-    monkeypatch.setattr(tabs.session, "write_active_tab", lambda tid: box.__setitem__("id", tid))
+    monkeypatch.setattr(
+        tabs.session, "write_active_tab", lambda tid: box.__setitem__("id", tid)
+    )
     monkeypatch.setattr(tabs.session, "clear_active_tab", lambda: box.pop("id", None))
     return box
 
@@ -115,6 +119,7 @@ class TestTabList:
         t0 = MagicMock(target=MagicMock(target_id="t0", url="https://a", title="A"))
         t1 = MagicMock(target=MagicMock(target_id="t1", url="https://b", title="B"))
         d.get_tabs.return_value = [t0, t1]
+        d.get_active_tab.return_value = t1
         result = tabs.tab_list()
         assert result == [
             {
@@ -123,6 +128,7 @@ class TestTabList:
                 "title": "A",
                 "target_id": "t0",
                 "label": None,
+                "active": False,
             },
             {
                 "index": 1,
@@ -130,6 +136,7 @@ class TestTabList:
                 "title": "B",
                 "target_id": "t1",
                 "label": None,
+                "active": True,
             },
         ]
 
@@ -145,7 +152,14 @@ class TestTabList:
         d.get_tabs.return_value = [t0]
         result = tabs.tab_list()
         assert result == [
-            {"index": 0, "url": None, "title": None, "target_id": None, "label": None}
+            {
+                "index": 0,
+                "url": None,
+                "title": None,
+                "target_id": None,
+                "label": None,
+                "active": False,
+            }
         ]
 
     def test_empty_tabs(self, d):
@@ -274,7 +288,9 @@ class TestTabNewExtract:
 
     def test_until_stable_scrolls_before_extracting(self, d, monkeypatch):
         scroll_until_stable = MagicMock(return_value=1234)
-        monkeypatch.setattr(tabs.interaction, "scroll_until_stable", scroll_until_stable)
+        monkeypatch.setattr(
+            tabs.interaction, "scroll_until_stable", scroll_until_stable
+        )
 
         result = tabs.tab_new_extract(
             "https://example.com",
@@ -283,12 +299,16 @@ class TestTabNewExtract:
             stable_rounds=3,
         )
 
-        scroll_until_stable.assert_called_once_with(px=2000, timeout=15.0, stable_rounds=3)
+        scroll_until_stable.assert_called_once_with(
+            px=2000, timeout=15.0, stable_rounds=3
+        )
         assert result == "# Title\n\nBody."
 
     def test_until_stable_false_does_not_scroll(self, d, monkeypatch):
         scroll_until_stable = MagicMock()
-        monkeypatch.setattr(tabs.interaction, "scroll_until_stable", scroll_until_stable)
+        monkeypatch.setattr(
+            tabs.interaction, "scroll_until_stable", scroll_until_stable
+        )
         tabs.tab_new_extract("https://example.com")
         scroll_until_stable.assert_not_called()
 
