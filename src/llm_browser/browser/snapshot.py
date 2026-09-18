@@ -12,6 +12,7 @@ methods unchanged.
 
 from __future__ import annotations
 
+import asyncio
 import json as json_module
 from dataclasses import dataclass, field
 from typing import Any
@@ -100,6 +101,23 @@ def _cdp_send(driver: CDPMethods, command: Any) -> Any:
     return driver.loop.run_until_complete(driver.page.send(command))
 
 
+def _cdp_send_many(driver: CDPMethods, commands: list) -> list:
+    """Send several CDP commands concurrently over the one connection.
+
+    The vendored connection assigns each command its own id and resolves
+    them independently as replies arrive, so N in-flight commands cost
+    about one round trip instead of N - this is what keeps tagging a
+    900-node page from taking 900 serialized websocket round trips.
+    """
+    if not commands:
+        return []
+
+    async def _run() -> list:
+        return await asyncio.gather(*(driver.page.send(c) for c in commands))
+
+    return driver.loop.run_until_complete(_run())
+
+
 def _ax_value_str(value: Any) -> str:
     if value is None or value.value is None:
         return ""
@@ -165,10 +183,14 @@ def _find_ax_id_for_selector(
     driver: CDPMethods, index: dict[str, _SnapshotNode], selector: str
 ) -> str:
     doc = _cdp_send(driver, mycdp.dom.get_document())
-    node_id = _cdp_send(driver, mycdp.dom.query_selector(doc.node_id, selector))
+    node_id = _cdp_send(
+        driver, mycdp.dom.query_selector(mycdp.dom.NodeId(doc.node_id), selector)
+    )
     if not node_id:
         raise ValueError(f"No element matches selector: {selector!r}")
-    described = _cdp_send(driver, mycdp.dom.describe_node(node_id=node_id))
+    described = _cdp_send(
+        driver, mycdp.dom.describe_node(node_id=mycdp.dom.NodeId(node_id))
+    )
     target_backend_id = int(described.backend_node_id)
     for ax_id, node in index.items():
         if (
@@ -257,7 +279,7 @@ _NAME_FROM_CONTENT_ROLES = {
 }
 
 
-def _heading_level(node: "_SnapshotNode") -> int:
+def _heading_level(node: _SnapshotNode) -> int:
     for key, value in node.properties:
         if key == "level":
             try:
@@ -499,6 +521,77 @@ def _render(levels, hrefs: dict, as_json: bool) -> str:
     return "\n".join(lines)
 
 
+def _tag_elements(d: CDPMethods, levels: list) -> None:
+    """Assign ``eN`` refs to the Element-backed nodes in ``levels`` and
+    write them into the live DOM as ``data-llmb-ref`` attributes.
+
+    Text-node AX roles (Chrome's "StaticText"/"InlineTextBox"/"LineBreak")
+    back onto DOM Text nodes, not Elements - CDP can't set an attribute on
+    those, and pushNodesByBackendIdsToFrontend comes back empty for them -
+    so only Element-backed nodes are taggable/actionable.
+
+    More than one AX node can share the same backend_dom_node_id (e.g. a
+    compound/aliasing node covering the same <a> as its "real" link node).
+    data-llmb-ref is a single DOM attribute, so tagging the same element
+    twice would silently overwrite the first node's ref in the DOM - that
+    node's ref would then match nothing (breaking @eN resolution) and its
+    href would be missing from the bulk lookup. Every aliasing node
+    therefore shares the one ref actually written to the DOM.
+
+    Done in two batched CDP calls rather than two round trips per node:
+    one pushNodesByBackendIdsToFrontend for every distinct element (its
+    result aligns by index with the ids sent), then all the
+    setAttributeValue commands in flight at once (``_cdp_send_many``).
+    """
+    nodes_by_dom_id: dict[Any, list[_SnapshotNode]] = {}
+    for _, node in levels:
+        if node.backend_dom_node_id is None or node.role in _NON_ELEMENT_ROLES:
+            continue
+        nodes_by_dom_id.setdefault(node.backend_dom_node_id, []).append(node)
+    if not nodes_by_dom_id:
+        return
+    backend_ids = list(nodes_by_dom_id)
+
+    def _push():
+        return _cdp_send(
+            d,
+            mycdp.dom.push_nodes_by_backend_ids_to_frontend(
+                backend_node_ids=[mycdp.dom.BackendNodeId(i) for i in backend_ids]
+            ),
+        )
+
+    node_ids = _push()
+    if not node_ids or len(node_ids) != len(backend_ids):
+        # Observed on long/dynamic real pages (e.g. old.reddit.com search
+        # results with 900+ AX nodes): CDP's DOM domain can silently return
+        # an empty result, as if its internal node-tracking state had been
+        # invalidated - re-issuing DOM.getDocument() to resync that state
+        # and retrying once reliably recovers it.
+        _cdp_send(d, mycdp.dom.get_document())
+        node_ids = _push()
+    if not node_ids or len(node_ids) != len(backend_ids):
+        # Shouldn't happen for Element nodes; leave everything untagged
+        # rather than blow up the whole snapshot.
+        return
+
+    ref_n = 0
+    commands = []
+    for backend_id, node_id in zip(backend_ids, node_ids):
+        if not node_id:
+            # CDP reports an unpushable node as id 0 - skip just that one.
+            continue
+        ref_n += 1
+        ref = f"e{ref_n}"
+        for node in nodes_by_dom_id[backend_id]:
+            node.ref = ref
+        commands.append(
+            mycdp.dom.set_attribute_value(
+                node_id=mycdp.dom.NodeId(node_id), name=_REF_ATTR, value=ref
+            )
+        )
+    _cdp_send_many(d, commands)
+
+
 def snapshot(
     interactive: bool = False,
     compact: bool = False,
@@ -526,7 +619,15 @@ def snapshot(
         # accessibility tree can't be resolved (pushNodesByBackendIdsToFrontend
         # silently comes back empty/None otherwise).
         _cdp_send(d, mycdp.dom.get_document())
-        nodes = _cdp_send(d, mycdp.accessibility.get_full_ax_tree())
+        # With no --selector our depth limit is measured from the tree
+        # root, same as CDP's own `depth`, so let Chrome trim the fetch
+        # instead of pulling the full tree and discarding most of it.
+        nodes = _cdp_send(
+            d,
+            mycdp.accessibility.get_full_ax_tree(
+                depth=depth if selector is None else None
+            ),
+        )
         index = _build_index(nodes)
         if not index:
             return "[]" if as_json else ""
@@ -539,71 +640,7 @@ def snapshot(
         pairs = _iter_nodes(index, root_id, 0, depth)
         levels = _filter_and_level(pairs, interactive, compact)
 
-        ref_n = 0
-        # More than one AX node can share the same backend_dom_node_id
-        # (e.g. a compound/aliasing node covering the same <a> as its
-        # "real" link node). data-llmb-ref is a single DOM attribute, so
-        # tagging the same element twice would silently overwrite the
-        # first node's ref value in the DOM - that node's ref would then
-        # match nothing in the DOM (breaking @eN selector resolution) and
-        # its href would come back missing from the bulk lookup below.
-        # Tracking already-tagged elements makes tagging idempotent per
-        # DOM element: every aliasing node shares the one ref actually
-        # written to the DOM.
-        dom_id_to_ref: dict[Any, str] = {}
-        for _, node in levels:
-            # Text-node AX roles (Chrome's "StaticText"/"InlineTextBox"/
-            # "LineBreak" internal roles) back onto DOM Text nodes, not
-            # Elements - CDP can't set an attribute on those, and
-            # pushNodesByBackendIdsToFrontend itself comes back empty for
-            # them. Only Element-backed nodes are taggable/actionable.
-            if node.backend_dom_node_id is None or node.role in _NON_ELEMENT_ROLES:
-                continue
-            existing_ref = dom_id_to_ref.get(node.backend_dom_node_id)
-            if existing_ref is not None:
-                node.ref = existing_ref
-                continue
-            ref_n += 1
-            node.ref = f"e{ref_n}"
-            node_ids = _cdp_send(
-                d,
-                mycdp.dom.push_nodes_by_backend_ids_to_frontend(
-                    backend_node_ids=[node.backend_dom_node_id]
-                ),
-            )
-            if not node_ids:
-                # Observed on long/dynamic real pages (e.g. old.reddit.com
-                # search results with 900+ AX nodes): after enough
-                # push/set-attribute round-trips, CDP's DOM domain silently
-                # starts returning an empty result for every subsequent
-                # pushNodesByBackendIdsToFrontend call for the rest of this
-                # snapshot, as if its internal node-tracking state had been
-                # invalidated - re-issuing DOM.getDocument() to resync that
-                # state and retrying once reliably recovers it. Without this,
-                # one early failure (e.g. on an unrelated node) silently
-                # drops every ref/href for everything tagged afterwards,
-                # including nodes far later in the tree like a page's
-                # pagination link.
-                _cdp_send(d, mycdp.dom.get_document())
-                node_ids = _cdp_send(
-                    d,
-                    mycdp.dom.push_nodes_by_backend_ids_to_frontend(
-                        backend_node_ids=[node.backend_dom_node_id]
-                    ),
-                )
-            if not node_ids:
-                # Shouldn't happen for an Element node, but don't let one
-                # unexpected miss blow up the whole snapshot.
-                node.ref = None
-                ref_n -= 1
-                continue
-            _cdp_send(
-                d,
-                mycdp.dom.set_attribute_value(
-                    node_id=node_ids[0], name=_REF_ATTR, value=node.ref
-                ),
-            )
-            dom_id_to_ref[node.backend_dom_node_id] = node.ref
+        _tag_elements(d, levels)
 
         hrefs: dict = {}
         # Markdown rendering needs hrefs to produce [text](href) links even

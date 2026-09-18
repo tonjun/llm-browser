@@ -102,7 +102,9 @@ def tab_new_extract(
     def _open(d: CDPMethods) -> None:
         d.open_new_tab(url)
         _mark_active(d)
-        d.sleep(2)
+        # open_new_tab returns as soon as the target exists, before the
+        # page has loaded - wait for readyState rather than a fixed sleep.
+        core.wait_for_load(d)
 
     # Held across the entire open/scroll/extract/close sequence (not just
     # each with_driver() call inside it, which is reentrant against this):
@@ -121,9 +123,7 @@ def tab_new_extract(
                 px=px, timeout=timeout, stable_rounds=stable_rounds
             )
         if snapshot:
-            content = snapshot_.snapshot(
-                compact=True, with_urls=True, as_markdown=True
-            )
+            content = snapshot_.snapshot(compact=True, with_urls=True, as_markdown=True)
         else:
             content = extract.extract_content(markdown=markdown)
         if close:
@@ -135,6 +135,10 @@ def tab_list() -> list[dict]:
     def _run(d: CDPMethods) -> list[dict]:
         tabs = d.get_tabs()
         labels_by_target = {v: k for k, v in session.read_labels().items()}
+        # Which tab the next command will attach to: the recorded `tab
+        # switch` pointer if it still exists, else the newest (see
+        # core._active_page) - surfaced so callers don't have to guess.
+        active_id = getattr(d.get_active_tab().target, "target_id", None)
         result = []
         for i, t in enumerate(tabs):
             target = getattr(t, "target", None)
@@ -146,6 +150,7 @@ def tab_list() -> list[dict]:
                     "title": getattr(target, "title", None),
                     "target_id": target_id,
                     "label": labels_by_target.get(target_id),
+                    "active": target_id is not None and target_id == active_id,
                 }
             )
         return result

@@ -134,11 +134,11 @@ def click(selector: str | None = None, text: str | None = None) -> None:
 def dblclick(selector: str) -> None:
     sel = resolve_selector(selector)
     js = (
-        "(() => {{ const el = document.querySelector({}); "
-        "if (!el) throw new Error('Element not found: {}'); "
+        f"(() => {{ const el = document.querySelector({_js_str(sel)}); "
+        f"if (!el) throw new Error('Element not found: ' + {_js_str(sel)}); "
         "el.dispatchEvent(new MouseEvent('dblclick', "
-        "{{bubbles: true, cancelable: true, view: window}})); }})()"
-    ).format(_js_str(sel), sel.replace("'", "\\'"))
+        "{bubbles: true, cancelable: true, view: window})); })()"
+    )
     with_driver(lambda d: d.evaluate(js))
 
 
@@ -150,11 +150,10 @@ def type_text(selector: str, text: str) -> None:
 def fill(selector: str, text: str) -> None:
     sel = resolve_selector(selector)
 
-    def _run(d: CDPMethods) -> None:
-        d.clear(sel)
-        d.type(sel, text)
-
-    with_driver(_run)
+    # d.type() already clears the field first (sb_cdp's type() calls
+    # element.clear_input() before send_keys), so a separate d.clear() here
+    # would just repeat the select + scroll_into_view round trips.
+    with_driver(lambda d: d.type(sel, text))
 
 
 def press(key: str, selector: str | None = None) -> None:
@@ -227,16 +226,25 @@ def upload(selector: str, files: list[str]) -> None:
     with_driver(_run)
 
 
+def _scroll_by(d: CDPMethods, dx: int, dy: int) -> None:
+    # Not d.scroll_down()/scroll_up(): SeleniumBase's CDP-mode versions
+    # take a *percentage of the viewport height*, not pixels (see
+    # cdp_driver/tab.py's scroll_down: `bounds.height * amount / 100`), so
+    # `scroll down 300` would jump three screens. window.scrollBy is real
+    # pixels, and is what left/right already used.
+    d.evaluate(f"window.scrollBy({dx}, {dy})")
+
+
 def scroll(direction: str, px: int = 300) -> None:
     def _run(d: CDPMethods) -> None:
         if direction == "down":
-            d.scroll_down(px)
+            _scroll_by(d, 0, px)
         elif direction == "up":
-            d.scroll_up(px)
+            _scroll_by(d, 0, -px)
         elif direction == "left":
-            d.evaluate(f"window.scrollBy(-{px}, 0)")
+            _scroll_by(d, -px, 0)
         elif direction == "right":
-            d.evaluate(f"window.scrollBy({px}, 0)")
+            _scroll_by(d, px, 0)
         else:
             raise ValueError(f"Unknown scroll direction: {direction!r}")
 
@@ -256,7 +264,7 @@ def scroll_until_count(
             if count >= target or count == last_count:
                 return count  # hit the target, or growth has stalled
             last_count = count
-            d.scroll_down(px)
+            _scroll_by(d, 0, px)
             d.sleep(0.5)
         return len(d.find_elements(sel))
 
@@ -279,7 +287,7 @@ def scroll_until_stable(
         last_height = d.evaluate("document.documentElement.scrollHeight")
         stable_count = 0
         while time.monotonic() < deadline:
-            d.scroll_down(px)
+            _scroll_by(d, 0, px)
             d.sleep(idle_s)
             height = d.evaluate("document.documentElement.scrollHeight")
             if height <= last_height:

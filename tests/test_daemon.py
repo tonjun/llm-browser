@@ -10,14 +10,37 @@ import pytest
 from llm_browser import daemon, session
 
 
+class TestWaitForChromeExit:
+    def test_returns_once_port_closes(self, monkeypatch):
+        answers = iter([True, True, False])
+        monkeypatch.setattr(daemon.session, "_port_open", lambda h, p: next(answers))
+        sleeps = []
+        monkeypatch.setattr(daemon.time, "sleep", sleeps.append)
+        daemon._wait_for_chrome_exit("127.0.0.1", 9222)
+        assert len(sleeps) == 2
+
+
 class TestRun:
+    def test_cleans_up_when_chrome_goes_away(self, monkeypatch):
+        driver = MagicMock()
+        driver.get_rd_port.return_value = 9222
+        monkeypatch.setattr(daemon.sb_cdp, "Chrome", MagicMock(return_value=driver))
+        monkeypatch.setattr(daemon, "_wait_for_chrome_exit", MagicMock())
+
+        daemon._run(headless=True, headed=False)
+
+        driver.quit.assert_called_once()
+        assert session.read_state() is None
+
     def test_launches_chrome_and_writes_state(self, monkeypatch):
         driver = MagicMock()
         driver.get_rd_port.return_value = 9222
         chrome = MagicMock(return_value=driver)
         monkeypatch.setattr(daemon.sb_cdp, "Chrome", chrome)
-        # signal.pause() would block forever - stop right after it's called.
-        monkeypatch.setattr(daemon.signal, "pause", MagicMock(side_effect=SystemExit))
+        # The Chrome-liveness wait would block forever - stop once reached.
+        monkeypatch.setattr(
+            daemon, "_wait_for_chrome_exit", MagicMock(side_effect=SystemExit)
+        )
 
         with pytest.raises(SystemExit):
             daemon._run(headless=True, headed=False)
@@ -37,7 +60,9 @@ class TestRun:
         driver.get_rd_port.return_value = 9222
         chrome = MagicMock(return_value=driver)
         monkeypatch.setattr(daemon.sb_cdp, "Chrome", chrome)
-        monkeypatch.setattr(daemon.signal, "pause", MagicMock(side_effect=SystemExit))
+        monkeypatch.setattr(
+            daemon, "_wait_for_chrome_exit", MagicMock(side_effect=SystemExit)
+        )
 
         with pytest.raises(SystemExit):
             daemon._run(headless=False, headed=True)
@@ -49,7 +74,9 @@ class TestRun:
         driver = MagicMock()
         driver.get_rd_port.return_value = 1
         monkeypatch.setattr(daemon.sb_cdp, "Chrome", MagicMock(return_value=driver))
-        monkeypatch.setattr(daemon.signal, "pause", MagicMock(side_effect=SystemExit))
+        monkeypatch.setattr(
+            daemon, "_wait_for_chrome_exit", MagicMock(side_effect=SystemExit)
+        )
         registered = {}
 
         def fake_signal(sig, handler):
@@ -67,7 +94,9 @@ class TestRun:
         driver = MagicMock()
         driver.get_rd_port.return_value = 1
         monkeypatch.setattr(daemon.sb_cdp, "Chrome", MagicMock(return_value=driver))
-        monkeypatch.setattr(daemon.signal, "pause", MagicMock(side_effect=SystemExit))
+        monkeypatch.setattr(
+            daemon, "_wait_for_chrome_exit", MagicMock(side_effect=SystemExit)
+        )
         registered = {}
         monkeypatch.setattr(
             daemon.signal,
@@ -90,7 +119,9 @@ class TestRun:
         driver.get_rd_port.return_value = 1
         driver.quit.side_effect = RuntimeError("boom")
         monkeypatch.setattr(daemon.sb_cdp, "Chrome", MagicMock(return_value=driver))
-        monkeypatch.setattr(daemon.signal, "pause", MagicMock(side_effect=SystemExit))
+        monkeypatch.setattr(
+            daemon, "_wait_for_chrome_exit", MagicMock(side_effect=SystemExit)
+        )
         registered = {}
         monkeypatch.setattr(
             daemon.signal,

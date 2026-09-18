@@ -21,7 +21,6 @@ from collections.abc import Callable
 from typing import TypeVar
 
 import requests
-from seleniumbase import sb_cdp
 from seleniumbase.core.sb_cdp import CDPMethods
 from seleniumbase.undetected.cdp_driver import cdp_util
 from seleniumbase.undetected.cdp_driver.connection import Connection
@@ -30,7 +29,9 @@ from llm_browser import session
 
 T = TypeVar("T")
 
-_SPAWN_TIMEOUT = 10.0
+# Cold Chrome starts (first run, slow disk) can take well over 10s; the
+# poll interval keeps the common fast path just as quick.
+_SPAWN_TIMEOUT = 30.0
 _SPAWN_POLL_INTERVAL = 0.1
 
 # How long a single CDP command may wait for its response before we give
@@ -86,7 +87,7 @@ def _patch_cdp_send_timeout() -> None:
                 _orig_send(self, cdp_obj, _is_update),
                 timeout=_CDP_COMMAND_TIMEOUT,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise TimeoutError(
                 f"CDP command timed out after {_CDP_COMMAND_TIMEOUT:.0f}s "
                 "(the tab it was sent to is likely closed or gone)."
@@ -199,10 +200,28 @@ def ensure_session(
     return state
 
 
+def wait_for_load(d: CDPMethods, timeout: float = 15.0, settle: float = 0.25) -> None:
+    """Block until ``document.readyState`` is ``complete`` (or ``timeout``).
+
+    Used after navigations that don't wait for the page themselves (e.g.
+    ``open_new_tab``, which returns as soon as the target exists) instead
+    of a fixed multi-second sleep: returns as soon as the page is actually
+    ready, and never hangs past ``timeout`` on a page that keeps loading.
+    A short ``settle`` afterwards gives client-side rendering a beat.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if d.evaluate("document.readyState") == "complete":
+            break
+        time.sleep(0.1)
+    if settle:
+        time.sleep(settle)
+
+
 def open_url(url: str, headless: bool = False, headed: bool = False) -> None:
     """Open a URL in the persistent browser session, starting it if needed."""
     existing = session.is_daemon_alive(session.read_state())
-    state = _ensure_daemon(headless=headless, headed=headed)
+    _ensure_daemon(headless=headless, headed=headed)
     if existing and headless:
         print(
             "Note: --headless is ignored; a session is already running.",
@@ -214,15 +233,19 @@ def open_url(url: str, headless: bool = False, headed: bool = False) -> None:
             file=sys.stderr,
         )
 
-    _ensure_target(state)
-    driver = sb_cdp.Chrome(host=state.host, port=state.port)
-    driver.get(url)
-    driver.sleep(2)
-    print(driver.get_title())
-    # Deliberately no driver.quit() here: this process only attached to
-    # the daemon's Chrome instance (connect_existing), so quitting would
-    # just close our CDP connection - it can't and shouldn't kill the
-    # shared browser. Closing the session is done via `llm-browser close`.
+    # Navigate via the same attach path every other command uses, rather
+    # than `sb_cdp.Chrome(host=..., port=...)`: that constructor always
+    # navigates the *newest* tab (ignoring the `tab switch` pointer) to
+    # about:blank before we even get to the real URL, and it ran outside
+    # the command lock. `_attach` honors the active tab, and `d.get()`
+    # already waits for the load itself. No driver.quit() here either -
+    # see the attach helper below.
+    def _run(d: CDPMethods) -> None:
+        d.get(url)
+        wait_for_load(d, settle=0)
+        print(d.get_title())
+
+    with_driver(_run)
 
 
 def close_session() -> bool:
@@ -232,6 +255,11 @@ def close_session() -> bool:
     """
     state = session.read_state()
     if not session.is_daemon_alive(state):
+        if state is not None:
+            # Stale state: the daemon died (or was SIGKILLed) but its Chrome
+            # may still be running and holding the profile lock. Reap the
+            # whole group now rather than leaving it for the next `open`.
+            _kill_daemon_group(state.pid, signal.SIGKILL)
         session.clear_state()
         session.clear_labels()
         session.clear_active_tab()

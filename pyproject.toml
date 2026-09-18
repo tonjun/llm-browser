@@ -1,6 +1,6 @@
 [project]
 name = "llm-browser"
-version = "0.3.2"
+version = "0.4.0"
 description = "A stealth browser automation CLI for LLM agents"
 readme = "README.md"
 license = "MIT"
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-llm-browser = "llm_browser.cli:app"
+llm-browser = "llm_browser.cli:run"
 
 [build-system]
 requires = ["uv_build>=0.11.32,<0.12.0"]

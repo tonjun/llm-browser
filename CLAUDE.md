@@ -36,18 +36,13 @@ matching files plus tests — see CONTRIBUTING.md for the checklist, and update
 canonical, version-controlled agent-facing docs) when the change affects how
 an agent should drive the CLI.
 
-**`src/llm_browser/browser.py` is dead code** — a pre-refactor monolith left
-over from before `browser/` (the package) existed. Python's import system
-resolves `llm_browser.browser` to the package, not this file, so it's never
-imported by anything; don't edit it, and don't be confused when a name looks
-duplicated between it and `browser/*.py`.
-
 ### Persistent session model (`browser/core.py`, `daemon.py`, `session.py`)
 
 The browser is not launched per-command. The first `open` spawns
 `daemon.py` as a detached background process (`start_new_session=True`,
 its own process group) that owns a single Chrome instance via
-SeleniumBase's CDP mode and blocks on `signal.pause()`. Coordination
+SeleniumBase's CDP mode and blocks until it's signalled to stop or Chrome's
+debug port goes away. Coordination
 between the daemon and later short-lived CLI invocations happens purely
 through state files under `~/.llm-browser/` (`session.py`) — there is no
 in-memory IPC, since every `llm-browser` command is a fresh process:

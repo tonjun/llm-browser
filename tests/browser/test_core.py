@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import signal
 from unittest.mock import MagicMock
 
@@ -256,18 +257,14 @@ class TestEnsureDaemon:
 class TestEnsureTarget:
     def test_does_nothing_when_a_page_target_exists(self, monkeypatch):
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
-        get = MagicMock(
-            return_value=MagicMock(json=lambda: [{"type": "page"}])
-        )
+        get = MagicMock(return_value=MagicMock(json=lambda: [{"type": "page"}]))
         put = MagicMock()
         monkeypatch.setattr(core.requests, "get", get)
         monkeypatch.setattr(core.requests, "put", put)
 
         core._ensure_target(state)
 
-        get.assert_called_once_with(
-            "http://127.0.0.1:9222/json/list", timeout=5
-        )
+        get.assert_called_once_with("http://127.0.0.1:9222/json/list", timeout=5)
         put.assert_not_called()
 
     def test_creates_a_tab_when_no_page_targets(self, monkeypatch):
@@ -281,9 +278,7 @@ class TestEnsureTarget:
 
         core._ensure_target(state)
 
-        put.assert_called_once_with(
-            "http://127.0.0.1:9222/json/new", timeout=5
-        )
+        put.assert_called_once_with("http://127.0.0.1:9222/json/new", timeout=5)
 
     def test_creates_a_tab_when_no_targets_at_all(self, monkeypatch):
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
@@ -294,9 +289,7 @@ class TestEnsureTarget:
 
         core._ensure_target(state)
 
-        put.assert_called_once_with(
-            "http://127.0.0.1:9222/json/new", timeout=5
-        )
+        put.assert_called_once_with("http://127.0.0.1:9222/json/new", timeout=5)
 
 
 # --------------------------------------------------------------------------
@@ -304,25 +297,53 @@ class TestEnsureTarget:
 # --------------------------------------------------------------------------
 
 
+def _patch_attach(monkeypatch, title="Title"):
+    """Stand in for core._attach() with a mock driver; returns the driver."""
+    driver = MagicMock()
+    driver.get_title.return_value = title
+    driver.evaluate.return_value = "complete"
+    monkeypatch.setattr(core, "_attach", lambda: driver)
+    return driver
+
+
 class TestOpenUrl:
-    def test_opens_url_and_prints_title(self, monkeypatch, capsys):
+    def test_navigates_via_attach_and_prints_title(self, monkeypatch, capsys):
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
         monkeypatch.setattr(session, "read_state", lambda: state)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
         monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
-        monkeypatch.setattr(core, "_ensure_target", MagicMock())
-
-        driver = MagicMock()
-        driver.get_title.return_value = "My Page"
-        chrome = MagicMock(return_value=driver)
-        monkeypatch.setattr(core.sb_cdp, "Chrome", chrome)
+        driver = _patch_attach(monkeypatch, title="My Page")
 
         core.open_url("https://example.com", headless=False)
 
-        chrome.assert_called_once_with(host="127.0.0.1", port=9222)
+        # Via _attach (honors the `tab switch` pointer), not sb_cdp.Chrome()
+        # which navigates the newest tab to about:blank first.
+        assert not hasattr(core, "sb_cdp")
         driver.get.assert_called_once_with("https://example.com")
+        driver.sleep.assert_not_called()
         driver.quit.assert_not_called()
         assert "My Page" in capsys.readouterr().out
+
+    def test_holds_command_lock_while_navigating(self, monkeypatch):
+        state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
+        monkeypatch.setattr(session, "read_state", lambda: state)
+        monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
+        monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
+        driver = _patch_attach(monkeypatch)
+        held = []
+
+        @contextlib.contextmanager
+        def fake_lock():
+            held.append("in")
+            yield
+            held.append("out")
+
+        monkeypatch.setattr(session, "command_lock", fake_lock)
+        driver.get.side_effect = lambda url: held.append("get")
+
+        core.open_url("https://example.com")
+
+        assert held == ["in", "get", "out"]
 
     def test_warns_when_headless_ignored_for_existing_session(
         self, monkeypatch, capsys
@@ -332,28 +353,20 @@ class TestOpenUrl:
         monkeypatch.setattr(session, "read_state", lambda: state)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
         monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
-        monkeypatch.setattr(core, "_ensure_target", MagicMock())
-        driver = MagicMock()
-        driver.get_title.return_value = "Title"
-        monkeypatch.setattr(core.sb_cdp, "Chrome", MagicMock(return_value=driver))
+        _patch_attach(monkeypatch)
 
         core.open_url("https://example.com", headless=True)
 
         err = capsys.readouterr().err
         assert "Note: --headless is ignored" in err
 
-    def test_warns_when_headed_ignored_for_existing_session(
-        self, monkeypatch, capsys
-    ):
+    def test_warns_when_headed_ignored_for_existing_session(self, monkeypatch, capsys):
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
         # Session already alive before this call.
         monkeypatch.setattr(session, "read_state", lambda: state)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: True)
         monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
-        monkeypatch.setattr(core, "_ensure_target", MagicMock())
-        driver = MagicMock()
-        driver.get_title.return_value = "Title"
-        monkeypatch.setattr(core.sb_cdp, "Chrome", MagicMock(return_value=driver))
+        _patch_attach(monkeypatch)
 
         core.open_url("https://example.com", headed=True)
 
@@ -367,32 +380,40 @@ class TestOpenUrl:
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
         monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
-        monkeypatch.setattr(core, "_ensure_target", MagicMock())
-        driver = MagicMock()
-        driver.get_title.return_value = "Title"
-        monkeypatch.setattr(core.sb_cdp, "Chrome", MagicMock(return_value=driver))
+        _patch_attach(monkeypatch)
 
         core.open_url("https://example.com", headless=True)
 
-        out = capsys.readouterr().out
-        assert "Note:" not in out
+        assert "Note:" not in capsys.readouterr().err
 
     def test_no_warning_when_starting_fresh_headed(self, monkeypatch, capsys):
-        # No session running yet, so "existing" is False - no warning even
-        # with headed=True.
         monkeypatch.setattr(session, "read_state", lambda: None)
         monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
         state = session.SessionState(pid=1, host="127.0.0.1", port=9222)
         monkeypatch.setattr(core, "_ensure_daemon", lambda headless, headed: state)
-        monkeypatch.setattr(core, "_ensure_target", MagicMock())
-        driver = MagicMock()
-        driver.get_title.return_value = "Title"
-        monkeypatch.setattr(core.sb_cdp, "Chrome", MagicMock(return_value=driver))
+        _patch_attach(monkeypatch)
 
         core.open_url("https://example.com", headed=True)
 
-        out = capsys.readouterr().out
-        assert "Note:" not in out
+        assert "Note:" not in capsys.readouterr().err
+
+
+class TestWaitForLoad:
+    def test_returns_once_ready_state_complete(self, monkeypatch):
+        monkeypatch.setattr(core.time, "sleep", lambda s: None)
+        d = MagicMock()
+        d.evaluate.side_effect = ["loading", "interactive", "complete"]
+        core.wait_for_load(d, timeout=5, settle=0)
+        assert d.evaluate.call_count == 3
+
+    def test_gives_up_at_timeout(self, monkeypatch):
+        monkeypatch.setattr(core.time, "sleep", lambda s: None)
+        times = iter([0, 0, 100])
+        monkeypatch.setattr(core.time, "monotonic", lambda: next(times))
+        d = MagicMock()
+        d.evaluate.return_value = "loading"
+        core.wait_for_load(d, timeout=1, settle=0)  # must not raise
+        assert d.evaluate.call_count == 1
 
 
 # --------------------------------------------------------------------------
@@ -415,6 +436,22 @@ class TestCloseSession:
         clear.assert_called_once()
         clear_labels.assert_called_once()
         clear_active.assert_called_once()
+
+    def test_reaps_orphaned_group_when_daemon_dead_but_state_stale(self, monkeypatch):
+        # Daemon pid is gone but session.json is still there: its Chrome may
+        # be lingering (holding the profile lock), so `close` kills the
+        # recorded process group instead of just forgetting about it.
+        state = session.SessionState(pid=4242, host="127.0.0.1", port=9222)
+        monkeypatch.setattr(session, "read_state", lambda: state)
+        monkeypatch.setattr(session, "is_daemon_alive", lambda s: False)
+        kill_group = MagicMock()
+        monkeypatch.setattr(core, "_kill_daemon_group", kill_group)
+        monkeypatch.setattr(session, "clear_state", MagicMock())
+        monkeypatch.setattr(session, "clear_labels", MagicMock())
+        monkeypatch.setattr(session, "clear_active_tab", MagicMock())
+
+        assert core.close_session() is False
+        kill_group.assert_called_once_with(4242, signal.SIGKILL)
 
     def test_sends_sigterm_and_returns_true_on_clean_shutdown(self, monkeypatch):
         state = session.SessionState(pid=42, host="h", port=1)

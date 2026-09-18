@@ -20,7 +20,7 @@ def read_page(selector: str | None = None) -> str:
     def _run(d: CDPMethods) -> str:
         soup = d.get_beautiful_soup()
         if selector:
-            node = soup.select_one(selector)
+            node = soup.select_one(resolve_selector(selector))
             return node.get_text(" ", strip=True) if node else ""
         return soup.get_text(" ", strip=True)
 

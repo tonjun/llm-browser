@@ -144,7 +144,9 @@ def register(app: typer.Typer) -> None:
             "down", help="up, down, left, right, top, or bottom."
         ),
         px: int = typer.Argument(
-            300, help="Pixels to scroll (ignored for top/bottom)."
+            None,
+            help="Pixels to scroll per step (default 300; 2000 with "
+            "--until-count/--until-stable; ignored for top/bottom).",
         ),
         until_count: int = typer.Option(
             None,
@@ -186,14 +188,17 @@ def register(app: typer.Typer) -> None:
                 raise typer.BadParameter("--until-count requires --selector.")
             print(
                 interaction.scroll_until_count(
-                    selector, until_count, px=px, timeout=timeout if timeout is not None else 25.0
+                    selector,
+                    until_count,
+                    px=px if px is not None else 2000,
+                    timeout=timeout if timeout is not None else 25.0,
                 )
             )
             return
         if until_stable:
             print(
                 interaction.scroll_until_stable(
-                    px,
+                    px if px is not None else 2000,
                     timeout=timeout if timeout is not None else 30.0,
                     stable_rounds=stable_rounds,
                 )
@@ -204,7 +209,7 @@ def register(app: typer.Typer) -> None:
         elif direction == "bottom":
             interaction.scroll_to_bottom()
         else:
-            interaction.scroll(direction, px)
+            interaction.scroll(direction, px if px is not None else 300)
 
     @app.command()
     def scrollintoview(

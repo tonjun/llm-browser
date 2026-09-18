@@ -14,6 +14,9 @@ each topic's commands via its ``commands/*.py`` module's ``register()``
 
 from __future__ import annotations
 
+import os
+import sys
+
 import typer
 
 from llm_browser import __version__
@@ -36,6 +39,11 @@ from llm_browser.commands import (
 
 app = typer.Typer(
     help="llm-browser: browser automation via SeleniumBase CDP Mode.",
+    # No Rich tracebacks: they run to 50+ lines and dump every frame's
+    # locals - including the text an agent just passed to `fill`, cookie
+    # values and TOTP keys - for what is usually a one-line "element not
+    # found" / "no running session". `run()` below prints just the message.
+    pretty_exceptions_enable=False,
     epilog="Examples:\n\n"
     "  llm-browser open https://example.com\n\n"
     "  llm-browser snapshot -i\n\n"
@@ -51,6 +59,7 @@ cookies_app = typer.Typer(help="Manage cookies.")
 storage_app = typer.Typer(help="Manage local/session storage.")
 tab_app = typer.Typer(help="Manage tabs.")
 window_app = typer.Typer(help="Manage windows.")
+
 
 def _version_callback(value: bool) -> None:
     if value:
@@ -94,5 +103,28 @@ misc.register(app)
 captcha.register(app)
 
 
+def run() -> None:
+    """Console-script entrypoint: ``app()`` with concise error reporting.
+
+    Any exception escaping a command is printed as a single ``error: ...``
+    line on stderr with exit status 1, so an agent reading the output gets
+    the message and nothing else. Set ``LLM_BROWSER_DEBUG=1`` to get the
+    full traceback instead.
+    """
+    try:
+        app()
+    except Exception as exc:
+        if os.environ.get("LLM_BROWSER_DEBUG"):
+            raise
+        print(f"error: {format_error(exc)}", file=sys.stderr)
+        sys.exit(1)
+
+
+def format_error(exc: BaseException) -> str:
+    """One-line message for ``exc``; falls back to the type name if empty."""
+    message = " ".join(str(exc).split())
+    return message or type(exc).__name__
+
+
 if __name__ == "__main__":
-    app()
+    run()

@@ -41,15 +41,15 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
             "Reddit).",
         ),
         stable_rounds: int = typer.Option(
-            2,
+            None,
             "--stable-rounds",
             help="Consecutive non-growing checks required before considering "
-            "the page stable (with --until-stable).",
+            "the page stable (with --until-stable; default 2).",
         ),
         timeout: float = typer.Option(
-            30.0,
+            None,
             "--timeout",
-            help="Max seconds to scroll for (with --until-stable).",
+            help="Max seconds to scroll for (with --until-stable; default 30).",
         ),
         label: str = typer.Option(
             None, "--label", help="Assign a label to the new tab."
@@ -84,12 +84,12 @@ def register(tab_app: typer.Typer, window_app: typer.Typer) -> None:
                     headed=headed,
                     snapshot=snapshot,
                     until_stable=until_stable,
-                    timeout=timeout,
-                    stable_rounds=stable_rounds,
+                    timeout=timeout if timeout is not None else 30.0,
+                    stable_rounds=stable_rounds if stable_rounds is not None else 2,
                 )
             )
         else:
-            if until_stable or stable_rounds != 2 or timeout != 30.0:
+            if until_stable or stable_rounds is not None or timeout is not None:
                 raise typer.BadParameter(
                     "--until-stable/--stable-rounds/--timeout require --extract."
                 )

@@ -16,10 +16,20 @@ import socket
 import threading
 from pathlib import Path
 
+# Override the state directory (session files *and* the Chrome profile)
+# to run several fully isolated sessions on one machine - e.g. one per
+# agent, or a throwaway profile for a test - instead of every invocation
+# sharing one Chrome, one active-tab pointer and one login state.
+_HOME_ENV = "LLM_BROWSER_HOME"
+
 
 def state_dir() -> Path:
-    """Return ``~/.llm-browser``, creating it if needed."""
-    path = Path.home() / ".llm-browser"
+    """Return the state directory, creating it if needed.
+
+    ``$LLM_BROWSER_HOME`` if set, else ``~/.llm-browser``.
+    """
+    override = os.environ.get(_HOME_ENV)
+    path = Path(override).expanduser() if override else Path.home() / ".llm-browser"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -27,6 +37,21 @@ def state_dir() -> Path:
 def profile_dir() -> Path:
     """Return the persistent Chrome profile directory."""
     path = state_dir() / "profile"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def screenshots_dir() -> Path:
+    """Default home for `screenshot` output, so files don't pile up next
+    to the session state files."""
+    path = state_dir() / "screenshots"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def pages_dir() -> Path:
+    """Default home for `save-markdown` output."""
+    path = state_dir() / "pages"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -168,22 +193,26 @@ def is_daemon_alive(state: SessionState | None) -> bool:
 def spawn_lock():
     """Best-effort lock so concurrent CLI invocations don't both spawn a daemon.
 
-    Uses an atomic O_CREAT|O_EXCL file as the lock. Yields True if the
-    lock was acquired, False if another process already holds it.
+    Non-blocking ``flock`` on a lock file. Yields True if the lock was
+    acquired, False if another process currently holds it. Unlike an
+    ``O_EXCL``-created marker file, an ``flock`` is released by the kernel
+    when its holder exits for any reason - so a CLI process killed mid-spawn
+    can't leave a stale lock behind that makes every later ``open`` wait
+    out the spawn timeout and fail.
     """
-    path = lock_file()
-    fd = None
+    fd = os.open(lock_file(), os.O_CREAT | os.O_RDWR, 0o644)
     try:
-        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        os.write(fd, str(os.getpid()).encode())
-        yield True
-    except FileExistsError:
-        yield False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
-        if fd is not None:
-            os.close(fd)
-            with contextlib.suppress(FileNotFoundError):
-                path.unlink()
+        os.close(fd)
 
 
 _command_lock_local = threading.local()

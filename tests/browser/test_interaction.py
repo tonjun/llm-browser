@@ -58,10 +58,11 @@ def test_type_text(d):
     d.send_keys.assert_called_once_with("#a", "hi")
 
 
-def test_fill_clears_then_types(d):
+def test_fill_types_via_clearing_type(d):
+    # sb_cdp's type() clears first itself; no separate clear() round trip.
     interaction.fill("#a", "hi")
-    d.clear.assert_called_once_with("#a")
     d.type.assert_called_once_with("#a", "hi")
+    d.clear.assert_not_called()
 
 
 class TestPress:
@@ -180,24 +181,42 @@ def test_upload(d):
     el.send_file.assert_called_once_with("f1.txt", "f2.txt")
 
 
-class TestScroll:
-    def test_down(self, d):
-        interaction.scroll("down", 100)
-        d.scroll_down.assert_called_once_with(100)
+def _scroll_calls(d):
+    """The window.scrollBy(...) JS strings evaluated so far."""
+    return [c.args[0] for c in d.evaluate.call_args_list if "scrollBy" in c.args[0]]
 
-    def test_up(self, d):
+
+def _height_then_scroll(d, heights):
+    """Answer scrollHeight reads from `heights` in order; scrollBy returns None."""
+    it = iter(heights)
+
+    def _evaluate(js):
+        if "scrollBy" in js:
+            return None
+        return next(it)
+
+    d.evaluate.side_effect = _evaluate
+
+
+class TestScroll:
+    def test_down_scrolls_by_pixels(self, d):
+        # Not d.scroll_down(): that's a percentage of the viewport, not px.
+        interaction.scroll("down", 100)
+        assert _scroll_calls(d) == ["window.scrollBy(0, 100)"]
+        d.scroll_down.assert_not_called()
+
+    def test_up_scrolls_by_negative_pixels(self, d):
         interaction.scroll("up", 50)
-        d.scroll_up.assert_called_once_with(50)
+        assert _scroll_calls(d) == ["window.scrollBy(0, -50)"]
+        d.scroll_up.assert_not_called()
 
     def test_left(self, d):
         interaction.scroll("left", 20)
-        js = d.evaluate.call_args.args[0]
-        assert "scrollBy(-20, 0)" in js
+        assert _scroll_calls(d) == ["window.scrollBy(-20, 0)"]
 
     def test_right(self, d):
         interaction.scroll("right", 20)
-        js = d.evaluate.call_args.args[0]
-        assert "scrollBy(20, 0)" in js
+        assert _scroll_calls(d) == ["window.scrollBy(20, 0)"]
 
     def test_unknown_direction_raises(self, d):
         with pytest.raises(ValueError, match="Unknown scroll direction"):
@@ -209,7 +228,7 @@ class TestScrollUntilCount:
         d.find_elements.side_effect = [[1], [1, 2], [1, 2, 3]]
         result = interaction.scroll_until_count("#item", 3)
         assert result == 3
-        assert d.scroll_down.call_count == 2
+        assert _scroll_calls(d) == ["window.scrollBy(0, 2000)"] * 2
 
     def test_resolves_ref_selector(self, d):
         d.find_elements.return_value = [1, 2, 3]
@@ -220,7 +239,7 @@ class TestScrollUntilCount:
         d.find_elements.side_effect = [[1], [1, 2], [1, 2]]
         result = interaction.scroll_until_count("#item", 10)
         assert result == 2
-        assert d.scroll_down.call_count == 2
+        assert len(_scroll_calls(d)) == 2
 
     def test_stops_at_timeout(self, d, monkeypatch):
         times = iter([0, 0, 100])  # deadline check trips on 3rd read
@@ -232,21 +251,21 @@ class TestScrollUntilCount:
 
 class TestScrollUntilStable:
     def test_returns_once_height_stops_growing(self, d):
-        d.evaluate.side_effect = [100, 200, 300, 300, 300]
+        _height_then_scroll(d, [100, 200, 300, 300, 300])
         result = interaction.scroll_until_stable()
         assert result == 300
-        assert d.scroll_down.call_count == 4
+        assert _scroll_calls(d) == ["window.scrollBy(0, 2000)"] * 4
 
     def test_stops_when_growth_stalls_immediately(self, d):
-        d.evaluate.side_effect = [100, 100, 100]
+        _height_then_scroll(d, [100, 100, 100])
         result = interaction.scroll_until_stable()
         assert result == 100
-        assert d.scroll_down.call_count == 2
+        assert len(_scroll_calls(d)) == 2
 
     def test_stops_at_timeout(self, d, monkeypatch):
         times = iter([0, 0, 100])  # deadline check trips on 3rd read
         monkeypatch.setattr(interaction.time, "monotonic", lambda: next(times))
-        d.evaluate.return_value = 100
+        _height_then_scroll(d, [100, 100, 100])
         result = interaction.scroll_until_stable(timeout=1)
         assert result == 100
 

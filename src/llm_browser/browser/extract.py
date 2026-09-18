@@ -43,10 +43,10 @@ def save_markdown(path: str | None = None) -> str:
     """Extract the current page as Markdown and write it to disk.
 
     Mirrors capture.screenshot's optional-path convention: with no path,
-    a timestamped one is generated under the state dir. Useful for other
+    a timestamped one is generated under ``~/.llm-browser/pages/``. Useful for other
     tools to cache page content on disk.
     """
-    target = path or str(session.state_dir() / f"page-{int(time.time() * 1000)}.md")
+    target = path or str(session.pages_dir() / f"page-{int(time.time() * 1000)}.md")
     content = extract_content(markdown=True)
     Path(target).write_text(content)
     return target
