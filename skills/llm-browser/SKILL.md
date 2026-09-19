@@ -178,6 +178,19 @@ it). `href`s are included by default, so pull out links without a second
 
 Available engines: `google, bing, duckduckgo (ddg), reddit, hn (hackernews), or github.`
 
+For a consistent, parse-free result list from the general web engines, add
+`--json` (`google`, `bing`, `duckduckgo`, `ddg` only):
+
+```bash
+llm-browser search google "llm browser automation" --json
+# [{"title": "...", "url": "https://...", "snippet": "..."}, ...]
+```
+
+It prints only a JSON array of organic results (ads/widgets skipped, engine
+redirect wrappers decoded to the real destination URL) — `open` a `url`
+directly. No `@eN` refs are produced; if the array comes back empty
+(captcha/consent page), rerun without `--json` to see the page.
+
 If a site isn't one of `search`'s known engines, drive its search box by
 hand with the same underlying loop: `open` the homepage, `snapshot -i` to
 find the search box's `@eN` ref, `fill` the query, `press Enter`, then

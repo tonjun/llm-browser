@@ -649,10 +649,19 @@ class TestSearch:
         result = runner.invoke(app, ["search", "google", "llm browser automation"])
         assert result.exit_code == 0
         assert result.output.strip() == "snapshot output"
-        search.assert_called_once_with("google", "llm browser automation")
+        search.assert_called_once_with(
+            "google", "llm browser automation", as_json=False
+        )
+
+    def test_search_json_flag_forwarded(self, monkeypatch):
+        search = MagicMock(return_value="[]")
+        monkeypatch.setattr(search_mod, "search", search)
+        result = runner.invoke(app, ["search", "bing", "q", "--json"])
+        assert result.exit_code == 0
+        search.assert_called_once_with("bing", "q", as_json=True)
 
     def test_search_unknown_engine_exits_nonzero(self, monkeypatch):
-        def raise_unknown(engine, query):
+        def raise_unknown(engine, query, as_json=False):
             raise ValueError(f"Unknown search engine: {engine!r}.")
 
         monkeypatch.setattr(search_mod, "search", raise_unknown)

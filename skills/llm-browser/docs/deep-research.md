@@ -28,6 +28,15 @@ chrome. Result `href`s are included in the snapshot by default, so you
 can `open` a result's link or `click @eN` on it without a second `get
 attr @eN href` round-trip.
 
+When you just need the result list, `search <engine> <query> --json`
+(`google`, `bing`, `duckduckgo`, `ddg`) prints a consistent JSON array of
+`{title, url, snippet}` for the organic results — same shape on every
+engine, real destination URLs (Bing/DDG redirect wrappers decoded), no
+snapshot parsing. It doesn't produce `@eN` refs, so `open <url>` a result
+rather than `click`ing it. `[]` (with a stderr hint) means the page didn't
+yield results, typically a captcha/consent wall; rerun without `--json` to
+see what's on screen.
+
 If you need to drive a search box by hand instead (a site not in
 `search`'s known-engine list, or you need intermediate steps like
 changing a filter first), the underlying loop is: `open` the homepage,

@@ -15,6 +15,12 @@ def register(app: typer.Typer) -> None:
             help="google, bing, duckduckgo (ddg), reddit, hn (hackernews), or github.",
         ),
         query: str = typer.Argument(..., help="Search query."),
+        as_json: bool = typer.Option(
+            False,
+            "--json",
+            help="Print a JSON array of {title, url, snippet} instead of the "
+            "snapshot (google, bing, duckduckgo, ddg only).",
+        ),
     ) -> None:
         """Search a known engine/site and return the results snapshot."""
-        print(search_mod.search(engine, query))
+        print(search_mod.search(engine, query, as_json=as_json))
