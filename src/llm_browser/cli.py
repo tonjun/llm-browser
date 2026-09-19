@@ -60,7 +60,7 @@ cookies_app = typer.Typer(help="Manage cookies.")
 storage_app = typer.Typer(help="Manage local/session storage.")
 tab_app = typer.Typer(help="Manage tabs.")
 window_app = typer.Typer(help="Manage windows.")
-skills_app = typer.Typer(help="Show the bundled Claude Code skills.")
+skills_app = typer.Typer(help="Show and install the bundled Claude Code skills.")
 
 
 def _version_callback(value: bool) -> None:

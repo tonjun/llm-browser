@@ -270,6 +270,7 @@ llm-browser gui-hover-click <hover-sel> <click-sel>  # Hover then click via real
 
 llm-browser skills list [--json]     # List the bundled Claude Code skills
 llm-browser skills get <name> [--full] [--path]  # Print a skill's SKILL.md (--full adds docs/*.md, --path prints its directory)
+llm-browser skills install [--project] [--dir <path>] [--force] [--json]  # Install the full llm-browser skill (one SKILL.md with docs/*.md inlined, like `get --full`) into ~/.claude/skills (--project: ./.claude/skills, --dir: custom); skipped if already installed unless --force
 ```
 
 `read` (no argument, or a CSS selector) reads the *currently open* page as

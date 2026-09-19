@@ -1,14 +1,18 @@
 """Bundled Claude Code skills (``llm_browser/skills/<name>/SKILL.md``).
 
-Pure file reads - no browser or daemon involved. The skills ship inside
-the package so they are available to ``uv tool install`` users, not just
-repo clones.
+Pure file reads/copies - no browser or daemon involved. The skills ship
+inside the package so they are available to ``uv tool install`` users, not
+just repo clones.
 """
 
 from __future__ import annotations
 
+import shutil
 from importlib.resources import files
 from importlib.resources.abc import Traversable
+from pathlib import Path
+
+INSTALLED_SKILL = "llm-browser"  # the only skill `skills install` copies
 
 
 def _root() -> Traversable:
@@ -70,3 +74,34 @@ def get_skill(name: str, full: bool = False) -> str:
 def skill_path(name: str) -> str:
     """Filesystem path of the skill's directory."""
     return str(_find(name))
+
+
+def default_root(project: bool = False) -> Path:
+    """Where Claude Code looks for skills: ``~/.claude/skills`` or ``./.claude/skills``."""
+    base = Path.cwd() if project else Path.home()
+    return base / ".claude" / "skills"
+
+
+def install_skills(root: Path, force: bool = False) -> list[dict[str, str]]:
+    """Write the full ``llm-browser`` skill to ``root/llm-browser/SKILL.md``.
+
+    The file is ``get_skill(..., full=True)``: SKILL.md with every docs/*.md
+    inlined, so the skill is one self-contained file with no docs/ directory.
+
+    An existing destination is left alone unless ``force``, which replaces
+    it. A symlinked destination is unlinked, never followed, so forcing over
+    a repo checkout's ``.claude/skills/llm-browser`` symlink can't touch the
+    bundled source it points at.
+    """
+    text = get_skill(INSTALLED_SKILL, full=True)
+    dest = root / INSTALLED_SKILL
+    if dest.is_symlink() or dest.exists():
+        if not force:
+            return [{"name": INSTALLED_SKILL, "path": str(dest), "status": "skipped"}]
+        if dest.is_symlink() or dest.is_file():
+            dest.unlink()
+        else:
+            shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    (dest / "SKILL.md").write_text(text + "\n", encoding="utf-8")
+    return [{"name": INSTALLED_SKILL, "path": str(dest), "status": "installed"}]

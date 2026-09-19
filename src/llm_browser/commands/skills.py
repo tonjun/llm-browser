@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
 from llm_browser.browser import skills
@@ -33,3 +35,32 @@ def register(skills_app: typer.Typer) -> None:
     ) -> None:
         """Print a skill's SKILL.md."""
         print(skills.skill_path(name) if path else skills.get_skill(name, full=full))
+
+    @skills_app.command(name="install")
+    def install_cmd(
+        project: bool = typer.Option(
+            False,
+            "--project",
+            help="Install into ./.claude/skills, not ~/.claude/skills.",
+        ),
+        dir: Path = typer.Option(
+            None, "--dir", help="Install into this skills directory instead."
+        ),
+        force: bool = typer.Option(
+            False, "--force", help="Replace skills that are already installed."
+        ),
+        json: bool = typer.Option(False, "--json", help="Output as JSON."),
+    ) -> None:
+        """Install the full llm-browser skill (docs inlined) for Claude Code (~/.claude/skills)."""
+        if project and dir is not None:
+            raise typer.BadParameter("--project and --dir are mutually exclusive.")
+        root = dir if dir is not None else skills.default_root(project)
+        results = skills.install_skills(root, force=force)
+        if json:
+            _print(results)
+            return
+        for r in results:
+            if r["status"] == "installed":
+                print(f"installed {r['name']} -> {r['path']}")
+            else:
+                print(f"skipped {r['name']} (exists; use --force): {r['path']}")

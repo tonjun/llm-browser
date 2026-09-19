@@ -152,6 +152,18 @@ llm-browser skills list                    # bundled skills + descriptions
 llm-browser skills get llm-browser --full  # SKILL.md plus its docs/*.md
 ```
 
+To make the `llm-browser` skill available to Claude Code outside a clone,
+install it into `~/.claude/skills` (or `./.claude/skills` with `--project`).
+The installed `SKILL.md` is the full version — the same text as
+`skills get llm-browser --full`, with every `docs/*.md` inlined:
+
+```bash
+llm-browser skills install                 # installs the llm-browser skill
+llm-browser skills install --force         # overwrite / update an existing install
+```
+
+Re-run with `--force` after upgrading the CLI to refresh the installed copy.
+
 Edit `src/llm_browser/skills/llm-browser/SKILL.md` itself when the command surface
 changes — that's the canonical, version-controlled copy.
 
