@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from collections.abc import Callable
 from urllib.parse import quote_plus
 
 from llm_browser.browser.core import open_url, with_driver
@@ -98,6 +99,16 @@ const rows = Array.from(document.querySelectorAll('.result')).map(r => {
 """,
 }
 
+# Extra query suffix that selects results page `n` (1-indexed) for
+# `search --json --pages N`. Page 1 adds nothing so its URL is unchanged.
+# duckduckgo (JS site) and ddg are absent on purpose: neither has a working
+# page URL param (html.duckduckgo.com ignores GET `s`/`dc` offsets and
+# re-serves page 1; next pages need a form POST).
+_PAGE_PARAMS: dict[str, Callable[[int], str]] = {
+    "google": lambda n: f"&start={10 * (n - 1)}" if n > 1 else "",
+    "bing": lambda n: f"&first={10 * (n - 1) + 1}" if n > 1 else "",
+}
+
 _JSON_WAIT_SECONDS = 10.0
 _JSON_POLL_INTERVAL = 0.5
 
@@ -107,7 +118,20 @@ def _extract_results(engine_key: str) -> list[dict[str, str]]:
     return with_driver(lambda d: d.evaluate(js)) or []
 
 
-def search(engine: str, query: str, as_json: bool = False) -> str:
+def _fetch_page_results(url: str, engine_key: str) -> list[dict[str, str]]:
+    # quiet: open_url's title line would corrupt the JSON on stdout.
+    open_url(url, quiet=True)
+    # Result pages can still be rendering when open_url returns, so poll
+    # until the extractor finds something.
+    deadline = time.monotonic() + _JSON_WAIT_SECONDS
+    results = _extract_results(engine_key)
+    while not results and time.monotonic() < deadline:
+        time.sleep(_JSON_POLL_INTERVAL)
+        results = _extract_results(engine_key)
+    return results
+
+
+def search(engine: str, query: str, as_json: bool = False, pages: int = 1) -> str:
     key = engine.lower()
     if key not in _ENGINES:
         raise ValueError(
@@ -119,26 +143,40 @@ def search(engine: str, query: str, as_json: bool = False) -> str:
             f"--json is not supported for {engine!r}. "
             f"Choose from: {', '.join(sorted(_EXTRACTORS))}"
         )
-    url = _ENGINES[key].format(q=quote_plus(query))
-    if not as_json:
-        open_url(url)
-    else:
-        # quiet: open_url's title line would corrupt the JSON on stdout.
-        open_url(url, quiet=True)
-        # Result pages can still be rendering when open_url returns, so poll
-        # until the extractor finds something.
-        deadline = time.monotonic() + _JSON_WAIT_SECONDS
-        results = _extract_results(key)
-        while not results and time.monotonic() < deadline:
-            time.sleep(_JSON_POLL_INTERVAL)
-            results = _extract_results(key)
-        if not results:
-            print(
-                "No results extracted (possible captcha/consent page); "
-                "rerun without --json to see the page snapshot.",
-                file=sys.stderr,
+    if pages > 1:
+        if not as_json:
+            raise ValueError("--pages greater than 1 requires --json.")
+        if key not in _PAGE_PARAMS:
+            raise ValueError(
+                f"--pages is not supported for {engine!r}. "
+                f"Choose from: {', '.join(sorted(_PAGE_PARAMS))}"
             )
-        return json.dumps(results, ensure_ascii=False)
+    base_url = _ENGINES[key].format(q=quote_plus(query))
+    if not as_json:
+        open_url(base_url)
+    else:
+        merged: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for page in range(1, pages + 1):
+            page_param = _PAGE_PARAMS[key](page) if key in _PAGE_PARAMS else ""
+            page_results = _fetch_page_results(base_url + page_param, key)
+            new = [r for r in page_results if r["url"] not in seen]
+            if not new:
+                if page == 1:
+                    print(
+                        "No results extracted (possible captcha/consent page); "
+                        "rerun without --json to see the page snapshot.",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        f"No new results on page {page}; stopping early.",
+                        file=sys.stderr,
+                    )
+                break
+            seen.update(r["url"] for r in new)
+            merged.extend(new)
+        return json.dumps(merged, ensure_ascii=False)
     # -i/--interactive would drop the result snippets: they're plain
     # StaticText/emphasis siblings of each result link, not one of
     # _INTERACTIVE_ROLES, so the interactive filter cuts them along with

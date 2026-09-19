@@ -113,6 +113,7 @@ the persistent daemon works and `llm-browser close` to shut it down.
 
 ```bash
 llm-browser search reddit "your query"     # search a known engine/site
+llm-browser search google "your query" --json --pages 3  # merge the first 3 result pages as JSON
 llm-browser extract                        # main content of the open page, as Markdown
 llm-browser tab new https://example.com --extract --close  # open a URL, extract as Markdown, close the tab
 llm-browser save-markdown notes.md         # save the open page's main content as Markdown to disk

@@ -103,5 +103,60 @@ def test_json_unsupported_engine_raises(json_mocks, engine):
     open_url.assert_not_called()
 
 
+def _row(n: int) -> dict[str, str]:
+    return {"title": f"T{n}", "url": f"https://a.example/{n}", "snippet": ""}
+
+
+@pytest.mark.parametrize(
+    "engine, base, suffixes",
+    [
+        ("google", "https://www.google.com/search?q=q", ["", "&start=10", "&start=20"]),
+        ("bing", "https://www.bing.com/search?q=q", ["", "&first=11", "&first=21"]),
+    ],
+)
+def test_pages_builds_per_page_urls(json_mocks, engine, base, suffixes):
+    open_url, _, driver = json_mocks
+    driver.evaluate.side_effect = [[_row(1)], [_row(2)], [_row(3)]]
+    out = search.search(engine, "q", as_json=True, pages=3)
+    assert json.loads(out) == [_row(1), _row(2), _row(3)]
+    assert [c.args[0] for c in open_url.call_args_list] == [base + s for s in suffixes]
+    assert all(c.kwargs == {"quiet": True} for c in open_url.call_args_list)
+
+
+def test_pages_dedupes_across_pages(json_mocks):
+    _, _, driver = json_mocks
+    driver.evaluate.side_effect = [[_row(1), _row(2)], [_row(2), _row(3)]]
+    out = search.search("google", "q", as_json=True, pages=2)
+    assert json.loads(out) == [_row(1), _row(2), _row(3)]
+
+
+def test_pages_stops_early_when_page_adds_nothing_new(json_mocks, capsys):
+    open_url, _, driver = json_mocks
+    driver.evaluate.side_effect = [[_row(1)], [_row(1)]] + [[_row(1)]] * 50
+    out = search.search("google", "q", as_json=True, pages=4)
+    assert json.loads(out) == [_row(1)]
+    assert open_url.call_count == 2
+    assert "page 2" in capsys.readouterr().err
+
+
+def test_pages_greater_than_one_requires_json(mocks):
+    open_url, _ = mocks
+    with pytest.raises(ValueError, match="requires --json"):
+        search.search("google", "q", pages=2)
+    open_url.assert_not_called()
+
+
+@pytest.mark.parametrize("engine", ["duckduckgo", "ddg"])
+def test_pages_unsupported_engine_raises(json_mocks, engine):
+    open_url, _, _ = json_mocks
+    with pytest.raises(ValueError, match="--pages is not supported"):
+        search.search(engine, "q", as_json=True, pages=2)
+    open_url.assert_not_called()
+
+
+def test_every_page_engine_has_an_extractor():
+    assert set(search._PAGE_PARAMS) <= set(search._EXTRACTORS)
+
+
 def test_every_extractor_engine_is_a_known_engine():
     assert set(search._EXTRACTORS) <= set(search._ENGINES)

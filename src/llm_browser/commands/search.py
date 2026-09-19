@@ -21,6 +21,14 @@ def register(app: typer.Typer) -> None:
             help="Print a JSON array of {title, url, snippet} instead of the "
             "snapshot (google, bing, duckduckgo, ddg only).",
         ),
+        pages: int = typer.Option(
+            1,
+            "--pages",
+            min=1,
+            max=5,
+            help="Number of result pages to fetch and merge into one array "
+            "(requires --json; google and bing only).",
+        ),
     ) -> None:
         """Search a known engine/site and return the results snapshot."""
-        print(search_mod.search(engine, query, as_json=as_json))
+        print(search_mod.search(engine, query, as_json=as_json, pages=pages))

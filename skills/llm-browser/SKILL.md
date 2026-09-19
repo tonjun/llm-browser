@@ -191,6 +191,16 @@ redirect wrappers decoded to the real destination URL) — `open` a `url`
 directly. No `@eN` refs are produced; if the array comes back empty
 (captcha/consent page), rerun without `--json` to see the page.
 
+For more than one page of results, add `--pages N` (1–5, default 1;
+requires `--json`; `google` and `bing` only):
+
+```bash
+llm-browser search google "llm browser automation" --json --pages 3
+```
+
+The pages are merged into one array, deduped by URL. It stops early (with a
+stderr note) if a page adds no new results.
+
 If a site isn't one of `search`'s known engines, drive its search box by
 hand with the same underlying loop: `open` the homepage, `snapshot -i` to
 find the search box's `@eN` ref, `fill` the query, `press Enter`, then

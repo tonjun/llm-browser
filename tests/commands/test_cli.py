@@ -650,7 +650,7 @@ class TestSearch:
         assert result.exit_code == 0
         assert result.output.strip() == "snapshot output"
         search.assert_called_once_with(
-            "google", "llm browser automation", as_json=False
+            "google", "llm browser automation", as_json=False, pages=1
         )
 
     def test_search_json_flag_forwarded(self, monkeypatch):
@@ -658,10 +658,25 @@ class TestSearch:
         monkeypatch.setattr(search_mod, "search", search)
         result = runner.invoke(app, ["search", "bing", "q", "--json"])
         assert result.exit_code == 0
-        search.assert_called_once_with("bing", "q", as_json=True)
+        search.assert_called_once_with("bing", "q", as_json=True, pages=1)
+
+    def test_search_pages_flag_forwarded(self, monkeypatch):
+        search = MagicMock(return_value="[]")
+        monkeypatch.setattr(search_mod, "search", search)
+        result = runner.invoke(app, ["search", "google", "q", "--json", "--pages", "3"])
+        assert result.exit_code == 0
+        search.assert_called_once_with("google", "q", as_json=True, pages=3)
+
+    @pytest.mark.parametrize("pages", ["0", "6"])
+    def test_search_pages_out_of_range_rejected(self, monkeypatch, pages):
+        search = MagicMock(return_value="[]")
+        monkeypatch.setattr(search_mod, "search", search)
+        result = runner.invoke(app, ["search", "google", "q", "--pages", pages])
+        assert result.exit_code != 0
+        search.assert_not_called()
 
     def test_search_unknown_engine_exits_nonzero(self, monkeypatch):
-        def raise_unknown(engine, query, as_json=False):
+        def raise_unknown(engine, query, as_json=False, pages=1):
             raise ValueError(f"Unknown search engine: {engine!r}.")
 
         monkeypatch.setattr(search_mod, "search", raise_unknown)
