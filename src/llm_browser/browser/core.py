@@ -218,8 +218,14 @@ def wait_for_load(d: CDPMethods, timeout: float = 15.0, settle: float = 0.25) ->
         time.sleep(settle)
 
 
-def open_url(url: str, headless: bool = False, headed: bool = False) -> None:
-    """Open a URL in the persistent browser session, starting it if needed."""
+def open_url(
+    url: str, headless: bool = False, headed: bool = False, quiet: bool = False
+) -> None:
+    """Open a URL in the persistent browser session, starting it if needed.
+
+    Prints the page title unless ``quiet`` (for callers whose stdout must
+    stay machine-readable, e.g. ``search --json``).
+    """
     existing = session.is_daemon_alive(session.read_state())
     _ensure_daemon(headless=headless, headed=headed)
     if existing and headless:
@@ -243,7 +249,8 @@ def open_url(url: str, headless: bool = False, headed: bool = False) -> None:
     def _run(d: CDPMethods) -> None:
         d.get(url)
         wait_for_load(d, settle=0)
-        print(d.get_title())
+        if not quiet:
+            print(d.get_title())
 
     with_driver(_run)
 

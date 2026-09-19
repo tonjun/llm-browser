@@ -36,6 +36,12 @@ is one of `google`, `bing`, `duckduckgo` (`ddg`),
 [`deep-research.md`](deep-research.md) for per-site caveats (e.g. why
 `reddit` search targets `old.reddit.com`).
 
+`--json` (`google`, `bing`, `duckduckgo`, `ddg` only) prints a JSON array
+of `{title, url, snippet}` for the organic results instead of the
+snapshot: engine redirect URLs are decoded to the real destination, and
+no `@eN` refs are produced. An empty array (`[]`) usually means a
+captcha/consent page — rerun without `--json`.
+
 ## Interaction
 
 ```bash
