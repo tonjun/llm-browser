@@ -25,7 +25,7 @@ llm-browser reload [--ignore-cache]   # Reload the current page
 ## Search
 
 ```bash
-llm-browser search <engine> <query>
+llm-browser search <engine> <query> [--json [--pages N]]
 ```
 
 Drives straight to a known engine/site's query URL (no re-deriving a
@@ -41,6 +41,11 @@ of `{title, url, snippet}` for the organic results instead of the
 snapshot: engine redirect URLs are decoded to the real destination, and
 no `@eN` refs are produced. An empty array (`[]`) usually means a
 captcha/consent page — rerun without `--json`.
+
+`--pages N` (1–5, default 1; requires `--json`; `google` and `bing`
+only) fetches the first N result pages and merges them into one array,
+deduped by URL. It stops early, with a stderr note, if a page adds no new
+results.
 
 ## Interaction
 

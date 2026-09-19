@@ -37,6 +37,11 @@ rather than `click`ing it. `[]` (with a stderr hint) means the page didn't
 yield results, typically a captcha/consent wall; rerun without `--json` to
 see what's on screen.
 
+To go past the first page, add `--pages N` (1–5; `google` and `bing`,
+with `--json`): `search google "..." --json --pages 3` merges the pages
+into one URL-deduped array, which beats paginating by hand for engine
+searches.
+
 If you need to drive a search box by hand instead (a site not in
 `search`'s known-engine list, or you need intermediate steps like
 changing a filter first), the underlying loop is: `open` the homepage,
