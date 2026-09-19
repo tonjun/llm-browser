@@ -267,6 +267,9 @@ llm-browser tile-windows             # Tile open browser windows
 llm-browser mfa-code [totp-key]      # Generate a TOTP code
 llm-browser enter-mfa <sel> [totp-key]  # Generate and enter a TOTP code
 llm-browser gui-hover-click <hover-sel> <click-sel>  # Hover then click via real OS pointer
+
+llm-browser skills list [--json]     # List the bundled Claude Code skills
+llm-browser skills get <name> [--full] [--path]  # Print a skill's SKILL.md (--full adds docs/*.md, --path prints its directory)
 ```
 
 `read` (no argument, or a CSS selector) reads the *currently open* page as

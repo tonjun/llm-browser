@@ -44,7 +44,7 @@ Run `make lint` and `make test` before opening a PR — both are quick.
 
 See the [Project layout](README.md#project-layout) section of the
 README for more detail, and
-[`skills/llm-browser/docs/`](skills/llm-browser/docs/) for how the CLI
+[`src/llm_browser/skills/llm-browser/docs/`](src/llm_browser/skills/llm-browser/docs/) for how the CLI
 is meant to be driven (persistent sessions, snapshot/ref model, deep
 research recipes).
 
@@ -54,8 +54,8 @@ research recipes).
 2. Add the Typer command in `commands/<topic>.py`, calling into it.
 3. Add tests under `tests/browser/` and `tests/commands/`.
 4. If the change affects how an agent should use the CLI, update
-   [`skills/llm-browser/SKILL.md`](skills/llm-browser/SKILL.md) and/or
-   the relevant doc under `skills/llm-browser/docs/` — that's the
+   [`src/llm_browser/skills/llm-browser/SKILL.md`](src/llm_browser/skills/llm-browser/SKILL.md) and/or
+   the relevant doc under `src/llm_browser/skills/llm-browser/docs/` — that's the
    canonical, version-controlled copy Claude Code loads as a project
    skill.
 

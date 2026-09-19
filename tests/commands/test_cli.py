@@ -830,3 +830,37 @@ class TestEvaluate:
         result = runner.invoke(app, ["eval", "--stdin"], input="document.title")
         assert result.exit_code == 0
         assert result.output.strip() == "document.title"
+
+
+class TestSkills:
+    def test_list_prints_name_and_description(self):
+        result = runner.invoke(app, ["skills", "list"])
+        assert result.exit_code == 0
+        assert "llm-browser: " in result.output
+        assert "search-results-extractor: " in result.output
+
+    def test_list_json(self):
+        result = runner.invoke(app, ["skills", "list", "--json"])
+        assert result.exit_code == 0
+        names = {s["name"] for s in json.loads(result.output)}
+        assert {"llm-browser", "search-results-extractor"} <= names
+
+    def test_get_prints_skill_md(self):
+        result = runner.invoke(app, ["skills", "get", "llm-browser"])
+        assert result.exit_code == 0
+        assert result.output.startswith("---\nname: llm-browser")
+
+    def test_get_full_includes_docs(self):
+        result = runner.invoke(app, ["skills", "get", "llm-browser", "--full"])
+        assert result.exit_code == 0
+        assert "--- docs/commands.md ---" in result.output
+
+    def test_get_path(self):
+        result = runner.invoke(app, ["skills", "get", "llm-browser", "--path"])
+        assert result.exit_code == 0
+        assert result.output.strip().endswith("skills/llm-browser")
+
+    def test_get_unknown_skill_fails(self):
+        result = runner.invoke(app, ["skills", "get", "nope"])
+        assert result.exit_code != 0
+        assert "unknown skill" in str(result.exception)
