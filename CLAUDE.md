@@ -32,7 +32,7 @@ The CLI has three layers, mirrored 1:1 by topic (`navigation`, `interaction`,
 `tests/` mirrors `src/llm_browser/` the same way (`tests/browser/test_foo.py`
 tests `browser/foo.py`). Adding or changing a command means touching all three
 matching files plus tests — see CONTRIBUTING.md for the checklist, and update
-`skills/llm-browser/SKILL.md` / `skills/llm-browser/docs/*.md` (the
+`src/llm_browser/skills/llm-browser/SKILL.md` / `src/llm_browser/skills/llm-browser/docs/*.md` (the
 canonical, version-controlled agent-facing docs) when the change affects how
 an agent should drive the CLI.
 
@@ -77,7 +77,7 @@ command's selector argument is resolved by `resolve_selector()`
 plain CSS selector — there's no separate ref-handling code path elsewhere.
 Refs are only valid for the snapshot that produced them; a new `snapshot`
 clears old `data-llmb-ref` attributes first. See
-`skills/llm-browser/docs/snapshot-and-refs.md` for the full model
+`src/llm_browser/skills/llm-browser/docs/snapshot-and-refs.md` for the full model
 including known CDP quirks it works around (e.g. text-node AX roles
 having no taggable DOM element, `RootWebArea` backing the `#document`
 node rather than `<html>`).
@@ -87,14 +87,14 @@ node rather than `<html>`).
 The CLI's command surface is deliberately modeled on `agent-browser` (an
 npm CLI with the same `@eN`-ref snapshot idea) but is a separate, smaller
 implementation — don't assume a flag exists just because `agent-browser`
-has it. `skills/llm-browser/docs/commands.md` documents the full command
+has it. `src/llm_browser/skills/llm-browser/docs/commands.md` documents the full command
 reference plus what's intentionally *not* implemented and why (useful
 context before adding a new command that might duplicate something
 already ruled out).
 
 ## Claude Code skill
 
-`skills/llm-browser/SKILL.md` (plus `skills/llm-browser/docs/`) is the
+`src/llm_browser/skills/llm-browser/SKILL.md` (plus `src/llm_browser/skills/llm-browser/docs/`) is the
 canonical, version-controlled doc teaching an agent how to drive this CLI
 correctly. The README says it's wired up via a committed symlink at
 `.claude/skills/llm-browser` — if that symlink is missing in your checkout,
@@ -102,7 +102,7 @@ recreate it with:
 
 ```bash
 mkdir -p .claude/skills
-ln -s ../../skills/llm-browser .claude/skills/llm-browser
+ln -s ../../src/llm_browser/skills/llm-browser .claude/skills/llm-browser
 ```
 
 Any change to the command surface that affects how an agent should use the

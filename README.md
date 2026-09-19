@@ -90,10 +90,10 @@ Chrome instance and leaves it running, and later commands reuse it
 instead of launching a new one. Refs (`@e1`, `@e2`, ...) are assigned
 fresh on every `snapshot` call and go stale the moment the page
 navigates or re-renders - re-snapshot after any page-changing action.
-See [`skills/llm-browser/docs/snapshot-and-refs.md`](skills/llm-browser/docs/snapshot-and-refs.md) for the
+See [`src/llm_browser/skills/llm-browser/docs/snapshot-and-refs.md`](src/llm_browser/skills/llm-browser/docs/snapshot-and-refs.md) for the
 full ref-staleness model and its caveats.
 
-See [`skills/llm-browser/docs/commands.md`](skills/llm-browser/docs/commands.md) for the full command
+See [`src/llm_browser/skills/llm-browser/docs/commands.md`](src/llm_browser/skills/llm-browser/docs/commands.md) for the full command
 reference (interaction, get/is, cookies/storage, tabs, captcha
 solving, and more), including what agent-browser supports that isn't
 implemented here and why.
@@ -106,7 +106,7 @@ llm-browser open https://example.com --headless
 llm-browser close
 ```
 
-See [`skills/llm-browser/docs/persistent-sessions.md`](skills/llm-browser/docs/persistent-sessions.md) for how
+See [`src/llm_browser/skills/llm-browser/docs/persistent-sessions.md`](src/llm_browser/skills/llm-browser/docs/persistent-sessions.md) for how
 the persistent daemon works and `llm-browser close` to shut it down.
 
 ## Deep research (search + scraping)
@@ -123,13 +123,13 @@ llm-browser scroll down --until-count 50 --selector ".item"  # infinite-scroll p
 
 For workflows that search engines and specific sites (Reddit, X/Twitter,
 Hacker News, GitHub, ...) and then extract structured data from the
-results, see [`skills/llm-browser/docs/deep-research.md`](skills/llm-browser/docs/deep-research.md) — recipes for
+results, see [`src/llm_browser/skills/llm-browser/docs/deep-research.md`](src/llm_browser/skills/llm-browser/docs/deep-research.md) — recipes for
 site-scoped search, structured extraction, and handling pagination/infinite
 scroll.
 
 ## Claude Code skill
 
-[`skills/llm-browser/SKILL.md`](skills/llm-browser/SKILL.md) teaches
+[`src/llm_browser/skills/llm-browser/SKILL.md`](src/llm_browser/skills/llm-browser/SKILL.md) teaches
 Claude Code (or any compatible agent) how to drive this CLI correctly
 — the core loop, the persistent-session model, and the places this
 tool's command surface diverges from `agent-browser`, the CLI its
@@ -141,10 +141,30 @@ symlink support), recreate it with:
 
 ```bash
 mkdir -p .claude/skills
-ln -s ../../skills/llm-browser .claude/skills/llm-browser
+ln -s ../../src/llm_browser/skills/llm-browser .claude/skills/llm-browser
 ```
 
-Edit `skills/llm-browser/SKILL.md` itself when the command surface
+The skills ship inside the package, so an installed CLI can print them
+without a clone:
+
+```bash
+llm-browser skills list                    # bundled skills + descriptions
+llm-browser skills get llm-browser --full  # SKILL.md plus its docs/*.md
+```
+
+To make the `llm-browser` skill available to Claude Code outside a clone,
+install it into `~/.claude/skills` (or `./.claude/skills` with `--project`).
+The installed `SKILL.md` is the full version — the same text as
+`skills get llm-browser --full`, with every `docs/*.md` inlined:
+
+```bash
+llm-browser skills install                 # installs the llm-browser skill
+llm-browser skills install --force         # overwrite / update an existing install
+```
+
+Re-run with `--force` after upgrading the CLI to refresh the installed copy.
+
+Edit `src/llm_browser/skills/llm-browser/SKILL.md` itself when the command surface
 changes — that's the canonical, version-controlled copy.
 
 ## Project layout
@@ -162,6 +182,8 @@ src/llm_browser/
 │   ├── snapshot.py #   the accessibility-tree snapshot/@ref system
 │   └── ...         #   navigation, interaction, wait, info, state, capture,
 │                   #   evaluate, storage, tabs, misc, gui, captcha
+├── skills/         # Bundled Claude Code skills (SKILL.md + docs), shown by
+│                   # `llm-browser skills` and symlinked into .claude/skills/
 ├── daemon.py       # Background process that owns the persistent Chrome instance
 └── session.py      # State-file helpers coordinating the CLI and the daemon
 ```

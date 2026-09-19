@@ -30,6 +30,7 @@ from llm_browser.commands import (
     misc,
     navigation,
     search,
+    skills,
     snapshot,
     state,
     storage,
@@ -59,6 +60,7 @@ cookies_app = typer.Typer(help="Manage cookies.")
 storage_app = typer.Typer(help="Manage local/session storage.")
 tab_app = typer.Typer(help="Manage tabs.")
 window_app = typer.Typer(help="Manage windows.")
+skills_app = typer.Typer(help="Show and install the bundled Claude Code skills.")
 
 
 def _version_callback(value: bool) -> None:
@@ -86,6 +88,7 @@ app.add_typer(cookies_app, name="cookies")
 app.add_typer(storage_app, name="storage")
 app.add_typer(tab_app, name="tab")
 app.add_typer(window_app, name="window")
+app.add_typer(skills_app, name="skills")
 
 navigation.register(app)
 interaction.register(app)
@@ -101,6 +104,7 @@ tabs.register(tab_app, window_app)
 snapshot.register(app)
 misc.register(app)
 captcha.register(app)
+skills.register(skills_app)
 
 
 def run() -> None:

@@ -830,3 +830,86 @@ class TestEvaluate:
         result = runner.invoke(app, ["eval", "--stdin"], input="document.title")
         assert result.exit_code == 0
         assert result.output.strip() == "document.title"
+
+
+class TestSkills:
+    def test_list_prints_name_and_description(self):
+        result = runner.invoke(app, ["skills", "list"])
+        assert result.exit_code == 0
+        assert "llm-browser: " in result.output
+        assert "search-results-extractor: " in result.output
+
+    def test_list_json(self):
+        result = runner.invoke(app, ["skills", "list", "--json"])
+        assert result.exit_code == 0
+        names = {s["name"] for s in json.loads(result.output)}
+        assert {"llm-browser", "search-results-extractor"} <= names
+
+    def test_get_prints_skill_md(self):
+        result = runner.invoke(app, ["skills", "get", "llm-browser"])
+        assert result.exit_code == 0
+        assert result.output.startswith("---\nname: llm-browser")
+
+    def test_get_full_includes_docs(self):
+        result = runner.invoke(app, ["skills", "get", "llm-browser", "--full"])
+        assert result.exit_code == 0
+        assert "--- docs/commands.md ---" in result.output
+
+    def test_get_path(self):
+        result = runner.invoke(app, ["skills", "get", "llm-browser", "--path"])
+        assert result.exit_code == 0
+        assert result.output.strip().endswith("skills/llm-browser")
+
+    def test_get_unknown_skill_fails(self):
+        result = runner.invoke(app, ["skills", "get", "nope"])
+        assert result.exit_code != 0
+        assert "unknown skill" in str(result.exception)
+
+    def test_install_to_dir_installs_only_llm_browser(self, tmp_path):
+        result = runner.invoke(app, ["skills", "install", "--dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert f"installed llm-browser -> {tmp_path / 'llm-browser'}" in result.output
+        skill_md = (tmp_path / "llm-browser" / "SKILL.md").read_text(encoding="utf-8")
+        assert "--- docs/commands.md ---" in skill_md
+        assert not (tmp_path / "llm-browser" / "docs").exists()
+        assert [p.name for p in tmp_path.iterdir()] == ["llm-browser"]
+
+    def test_install_existing_skipped_then_forced(self, tmp_path):
+        args = ["skills", "install", "--dir", str(tmp_path)]
+        runner.invoke(app, args)
+        again = runner.invoke(app, args)
+        assert "skipped llm-browser (exists; use --force)" in again.output
+        forced = runner.invoke(app, [*args, "--force"])
+        assert "installed llm-browser" in forced.output
+
+    def test_install_json(self, tmp_path):
+        result = runner.invoke(
+            app, ["skills", "install", "--dir", str(tmp_path), "--json"]
+        )
+        assert result.exit_code == 0
+        assert json.loads(result.output) == [
+            {
+                "name": "llm-browser",
+                "path": str(tmp_path / "llm-browser"),
+                "status": "installed",
+            }
+        ]
+
+    def test_install_defaults_to_user_dir(self, tmp_path):
+        # conftest points Path.home() at tmp_path
+        result = runner.invoke(app, ["skills", "install"])
+        assert result.exit_code == 0
+        assert (tmp_path / ".claude" / "skills" / "llm-browser" / "SKILL.md").is_file()
+
+    def test_install_project_uses_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["skills", "install", "--project"])
+        assert result.exit_code == 0
+        assert (tmp_path / ".claude" / "skills" / "llm-browser" / "SKILL.md").is_file()
+
+    def test_install_project_and_dir_conflict(self, tmp_path):
+        result = runner.invoke(
+            app, ["skills", "install", "--project", "--dir", str(tmp_path)]
+        )
+        assert result.exit_code != 0
+        assert list(tmp_path.iterdir()) == []
