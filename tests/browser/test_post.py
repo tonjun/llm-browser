@@ -58,6 +58,12 @@ class TestAdapterFor:
                 "Review collected by",
             ),
             ("https://g2.com/products/x/reviews?page=2", "g2", "survey_responses"),
+            (
+                "https://www.threads.com/@openai/post/DVHLaLdErKM",
+                "threads",
+                "injected_media_ids",
+            ),
+            ("https://threads.net/@openai/post/DVHLaLdErKM", "threads", "pressable"),
             ("https://www.quora.com/What-is-x", "quora", "dom_annotate"),
             ("https://es.quora.com/Que-es-x", "quora", "dom_annotate"),
             (
@@ -80,6 +86,7 @@ class TestAdapterFor:
         assert post._adapter_for("https://nottrustpilot.com/")[0] == "generic"
         assert post._adapter_for("https://notquora.com/")[0] == "generic"
         assert post._adapter_for("https://notg2.com/")[0] == "generic"
+        assert post._adapter_for("https://notthreads.com/")[0] == "generic"
 
 
 class TestNormalizers:
@@ -366,6 +373,44 @@ class TestExtractPost:
         assert review["url"] == (
             "https://www.g2.com/survey_responses/ibm-watsonx-ai-review-1"
         )
+
+    def test_threads_thread_page_overrides_generic_login_junk(self, monkeypatch):
+        _driver(
+            monkeypatch,
+            "https://www.threads.com/@openai/post/DVHLaLdErKM",
+            generic={
+                "title": "Threads \u2022 Log in",
+                "content": "Join Threads to share ideas",
+            },
+            adapter={
+                "title": "",
+                "author": {
+                    "name": "openai",
+                    "handle": "@openai",
+                    "url": "/@openai",
+                },
+                "published": "2026-02-23T19:28:21.000Z",
+                "content": "Last week, Sam got to meet...",
+                "score": "1K",
+                "comment_count": "61",
+                "media": [],
+                "comments": [
+                    {
+                        "depth": 0,
+                        "author": {"name": "a"},
+                        "content": "Wow",
+                        "score": "1",
+                    },
+                    {"depth": 0, "author": {"name": "b"}, "content": "Nice"},
+                ],
+            },
+        )
+        result = _run()
+        assert result["platform"] == "threads"
+        assert result["title"] is None
+        assert result["author"]["url"] == "https://www.threads.com/@openai"
+        assert (result["score"], result["comment_count"]) == (1000, 61)
+        assert [c["content"] for c in result["comments"]] == ["Wow", "Nice"]
 
     def test_rereads_while_adapter_reports_pending(self, monkeypatch):
         """Quora's adapter clicks "(more)" and reports pending=True; the next

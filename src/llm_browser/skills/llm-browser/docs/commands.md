@@ -293,7 +293,7 @@ plain text if `trafilatura` finds no main-content region.
 (it never navigates):
 
 ```json
-{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|quora|facebook|instagram|discourse|generic",
+{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|threads|quora|facebook|instagram|discourse|generic",
  "title": "...", "author": {"name": "...", "handle": "...", "url": "..."},
  "published": "ISO-8601 (or the site's raw date text)", "content": "post body",
  "score": 123, "comment_count": 45,
@@ -308,7 +308,7 @@ have no `title`). Extraction is layered: a generic pass (JSON-LD
 OpenGraph/meta tags, then microdata and DOM heuristics for comment blocks)
 runs on every page, and a per-site adapter overrides it for `reddit.com`
 (old and new UI), `x.com`/`twitter.com`, `news.ycombinator.com`,
-`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `facebook.com`, `instagram.com`, and Discourse forums (detected from
+`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `threads.com`/`threads.net` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse forums (detected from
 `<meta name="generator">`, so any hostname). `comments` are nested via
 `replies`, except on X (replies are flat) and Discourse (posts are a flat
 chronological list). `--max-comments` truncates in document order, so a
@@ -329,7 +329,14 @@ the reviewer. G2 works the same way: a product page
 and page number) whose `comments` are that page's 10 reviews as
 `[rating/5] title`, then each answer (like / dislike / problems solved ...)
 under its own question heading; use `?page=N` for more, while `comment_count`
-is the product's total. A Quora question is a
+is the product's total. Threads has no `title`; replies come back flat
+(nested ones sit behind "Show replies"), counts are the abbreviated ones the
+site shows ("1K" -> 1000), and it only keeps a window of replies in the DOM, so
+`comments` is short of `comment_count` even after scrolling. Opening a post URL
+directly lands on the home feed with the post injected at the top; `post`
+detects that, clicks through to the real thread page itself (so run `post`
+before scrolling, then `scroll down ... --until-stable` and `post` again for
+more replies). A Quora question is a
 post with no author/date/content whose `comments` are its answers (answers
 to *related* questions shown on the page are excluded, and `comment_count`
 is the question's total answer count); Quora only shows relative ages, so

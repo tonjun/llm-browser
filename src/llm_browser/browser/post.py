@@ -684,6 +684,94 @@ return {
 };
 """)
 
+# Threads: class names are hashed, but every post is a
+# `[data-pressable-container]` card with a `time[datetime]` wrapped in its
+# `/@user/post/<code>` permalink. A thread page is the main post (the card
+# whose permalink is the page's own path) followed by its replies as later
+# cards; parents of a reply URL come before it and are skipped. Replies are
+# flat (depth 0) - nested ones sit behind "Show replies" - and counts are the
+# abbreviated ones Threads shows ("1K"). The app is a SPA that keeps the home
+# feed mounted (hidden) under the thread page, so only visible cards count. A
+# cold load of a post URL is bounced to the home feed as
+# `/?injected_media_ids=[id]`: the post is the feed's first card, with no
+# replies, and the feed's column-title link keeps that param after the app
+# strips it from `location`. There the adapter clicks the post's permalink (an
+# in-app navigation) and returns `pending: true` until the thread renders.
+# The post's shortcode is the media id in base 64.
+_THREADS_JS = _script(r"""
+const shown = e => e.getClientRects().length > 0;
+const cards = Array.from(document.querySelectorAll('[data-pressable-container="true"]')).filter(shown);
+const linkOf = c => Array.from(c.querySelectorAll('a[href*="/post/"]')).find(a => a.querySelector('time'));
+const injLink = document.querySelector('a[href*="injected_media_ids"]');
+if (injLink && shown(injLink)) {
+  // Still the feed (the URL flips to the post path before the DOM does).
+  const injected = decodeURIComponent(injLink.getAttribute('href')).match(/\d{10,}/);
+  if (location.pathname === '/' && injected) {
+    const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const idOf = code => Array.from(code).reduce((n, ch) => n * 64n + BigInt(ALPHA.indexOf(ch)), 0n).toString();
+    const links = cards.map(linkOf).filter(Boolean);
+    const target = links.find(a => { try { return idOf(a.pathname.split('/post/')[1].split('/')[0]) === injected[0]; } catch (e) { return false; } });
+    if (!target) return null;
+    target.click();
+  }
+  return {pending: true};
+}
+if (!/\/post\//.test(location.pathname)) return null;
+let main = cards.findIndex(c => { const a = linkOf(c); return a && a.pathname.replace(/\/$/, '') === location.pathname.replace(/\/$/, ''); });
+if (main < 0) return null;
+// The action icons are bare SVGs titled "Like"/"Reply"/...; the count is the
+// rest of their button's text ("Like1K" -> "1K", "Reply" alone -> none).
+const count = (c, ...labels) => {
+  for (const t of c.querySelectorAll('svg > title')) {
+    if (!labels.includes(t.textContent)) continue;
+    const b = t.closest('[role="button"]');
+    if (b) return txt(b).replace(t.textContent, '').trim() || null;
+  }
+  return null;
+};
+const parse = c => {
+  const link = linkOf(c);
+  const name = ((Array.from(c.querySelectorAll('a[href^="/@"]')).find(a => !a.href.includes('/post/')) || {}).textContent || '').trim();
+  // Post text ends where the action row starts (the reply composer's
+  // placeholder in the main card comes after it).
+  const bar = Array.from(c.querySelectorAll('svg > title')).find(t => /^(Like|Unlike)$/.test(t.textContent));
+  const body = Array.from(c.querySelectorAll('span[dir="auto"]')).filter(s =>
+    !s.closest('a, [role="button"]') && !s.parentElement.closest('span[dir="auto"]') && !s.querySelector('time') &&
+    !(bar && bar.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING));
+  const media = [];
+  c.querySelectorAll('img').forEach(i => {
+    const src = i.currentSrc || i.src;
+    if (!src || /profile picture/i.test(i.alt) || (i.naturalWidth || i.width) < 150) return;
+    media.push({type: 'image', url: src, alt: i.alt || null});
+  });
+  c.querySelectorAll('video').forEach(v => {
+    const u = v.currentSrc || v.src;
+    if (u && !u.startsWith('blob:')) media.push({type: 'video', url: u, alt: null});
+    else if (v.poster) media.push({type: 'image', url: v.poster, alt: 'video poster'});
+  });
+  return {
+    author: name ? person(name, '@' + name, abs('/@' + name)) : null,
+    published: attr(c.querySelector('time'), 'datetime'),
+    content: body.map(txt).filter(Boolean).join('\n'),
+    score: count(c, 'Like', 'Unlike'),
+    replies: count(c, 'Reply'),
+    url: link ? link.href : null,
+    media,
+  };
+};
+const m = parse(cards[main]);
+return {
+  title: '',
+  author: m.author,
+  published: m.published,
+  content: m.content,
+  score: m.score,
+  comment_count: m.replies,
+  media: m.media,
+  comments: cards.slice(main + 1).map(parse).map(p => ({depth: 0, ...p})),
+};
+""")
+
 # Quora: a question page is a post (the question, no author/date) whose
 # `comments` are its answers. Class names are hashed, but Quora's own
 # `dom_annotate_*` / `puppeteer_test_*` hooks are stable. The page also lists
@@ -794,6 +882,7 @@ _ADAPTERS: dict[str, tuple[str, str]] = {
     "linkedin": ("linkedin", _LINKEDIN_JS),
     "trustpilot": ("trustpilot", _TRUSTPILOT_JS),
     "g2": ("g2", _G2_JS),
+    "threads": ("threads", _THREADS_JS),
     "quora": ("quora", _QUORA_JS),
 }
 
@@ -811,6 +900,8 @@ _HOSTS: dict[str, str] = {
     "linkedin.com": "linkedin",
     "trustpilot.com": "trustpilot",
     "g2.com": "g2",
+    "threads.com": "threads",
+    "threads.net": "threads",
     "quora.com": "quora",
 }
 
