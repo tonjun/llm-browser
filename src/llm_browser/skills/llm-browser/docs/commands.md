@@ -262,6 +262,7 @@ llm-browser highlight <sel>          # Highlight an element
 llm-browser read [sel]               # Read the current page as plain text (CSS selector or @eN ref)
 llm-browser read <url> [--markdown]  # Fetch a URL directly (no browser tab)
 llm-browser extract [--text]         # Readability-style main content of the open page (Markdown by default)
+llm-browser post [--max-comments n] [--no-comments]  # Structured JSON for the open social/forum post (author, date, title, content, media, nested comments)
 llm-browser internalize-links        # Rewrite target="_blank" links to same-tab
 llm-browser tile-windows             # Tile open browser windows
 llm-browser mfa-code [totp-key]      # Generate a TOTP code
@@ -287,6 +288,40 @@ open* page's rendered HTML instead of a fresh fetch - use it (rather than
 `read <url>`) for JS-heavy or logged-in pages where the content only
 exists after the browser has rendered it. Falls back to the whole page's
 plain text if `trafilatura` finds no main-content region.
+
+`post` returns one JSON object for the post on the *currently open* page
+(it never navigates):
+
+```json
+{"url": "...", "platform": "reddit|x|hackernews|linkedin|facebook|instagram|discourse|generic",
+ "title": "...", "author": {"name": "...", "handle": "...", "url": "..."},
+ "published": "ISO-8601 (or the site's raw date text)", "content": "post body",
+ "score": 123, "comment_count": 45,
+ "media": [{"type": "image|video|audio|link", "url": "...", "alt": "..."}],
+ "comments": [{"author": {...}, "published": "...", "content": "...",
+               "score": 3, "url": "...", "replies": [ ...same shape... ]}]}
+```
+
+Every key is always present (`null` / `[]` when unknown; X and Instagram
+have no `title`). Extraction is layered: a generic pass (JSON-LD
+`DiscussionForumPosting`/`SocialMediaPosting`/`Article`/`Question`, then
+OpenGraph/meta tags, then microdata and DOM heuristics for comment blocks)
+runs on every page, and a per-site adapter overrides it for `reddit.com`
+(old and new UI), `x.com`/`twitter.com`, `news.ycombinator.com`,
+`linkedin.com` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse forums (detected from
+`<meta name="generator">`, so any hostname). `comments` are nested via
+`replies`, except on X (replies are flat) and Discourse (posts are a flat
+chronological list). `--max-comments` truncates in document order, so a
+reply is never returned without its parent; `comment_count` is the page's own
+total when it reports one, otherwise the number extracted. LinkedIn shows only relative ages ("1yr"), so
+`published` is decoded from the post/comment id (Snowflake timestamp); it has
+no `title`, a repost's original is appended to `content` under a
+"— Reshared from <name> —" line, and it has one reply level (reply nesting
+is keyed on LinkedIn's reply-list markup). Only comments
+present in the DOM are returned - scroll / click "load more" first. Facebook
+and Instagram are best-effort (obfuscated markup, login-walled) and X needs a
+session for replies; when nothing is found `post` waits ~10s, then warns on
+stderr and returns the null-filled object.
 
 See [`deep-research.md`](deep-research.md) for search + web-scraping
 recipes built on `search`, `snapshot`, `get`, `eval`, `read`, `extract`,

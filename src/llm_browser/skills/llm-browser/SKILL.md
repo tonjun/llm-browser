@@ -226,6 +226,10 @@ few lookups.
 llm-browser extract                          # readability-style main content, Markdown
 llm-browser extract --text                    # ...or plain text
 
+llm-browser post                             # structured JSON for a social/forum post: author, date, title, content, media, nested comments
+llm-browser post --no-comments               # ...just the post
+llm-browser post --max-comments 50           # ...capped at 50 comments (document order, default 200)
+
 llm-browser read https://example.com --markdown  # fetch + extract a URL directly, no browser tab
 
 llm-browser snapshot -i --json > page.json   # structured, best for reasoning over content
@@ -241,6 +245,17 @@ Array.from(rows).map(r => ({
 }));
 EOF
 ```
+
+Prefer `post` when you need a post's *structure* — who wrote it, when, its
+title, attached media, and the comment tree — rather than one Markdown blob
+(Reddit, X, Hacker News, LinkedIn, Facebook, Instagram, Discourse, and any page with
+JSON-LD/microdata such as forums, Q&A sites and blogs). It works on the
+already-open page, so `open` the post first. It only sees what is in the DOM:
+on lazy-loaded threads run `scroll down 2000 --until-stable` (or click "load
+more") before `post`, or the `comments` array will be short. Facebook and
+Instagram are best-effort and usually need a logged-in session; X does too
+for replies. If nothing is found it prints a hint on stderr and returns an
+object with null fields.
 
 Prefer `extract` for an article/post's main body (readability-style, no
 selector needed), `read <url>` when you don't even need the page open in
