@@ -29,6 +29,7 @@ from llm_browser.commands import (
     interaction,
     misc,
     navigation,
+    post,
     search,
     skills,
     snapshot,
@@ -95,6 +96,7 @@ interaction.register(app)
 wait.register(app)
 search.register(app)
 extract.register(app)
+post.register(app)
 info.register(get_app)
 state.register(is_app)
 capture.register(app)

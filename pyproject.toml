@@ -1,6 +1,6 @@
 [project]
 name = "llm-browser"
-version = "0.7.0"
+version = "0.8.0"
 description = "A stealth browser automation CLI for LLM agents"
 readme = "README.md"
 license = "MIT"

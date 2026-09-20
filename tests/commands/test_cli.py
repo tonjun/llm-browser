@@ -31,6 +31,7 @@ from llm_browser.browser import (
 )
 from llm_browser.browser import evaluate as evaluate_mod
 from llm_browser.browser import extract as extract_mod
+from llm_browser.browser import post as post_mod
 from llm_browser.browser import search as search_mod
 from llm_browser.browser import snapshot as snapshot_mod
 from llm_browser.browser import wait as wait_mod
@@ -699,6 +700,30 @@ class TestExtract:
         result = runner.invoke(app, ["extract", "--text"])
         assert result.exit_code == 0
         extract_content.assert_called_once_with(markdown=False)
+
+
+class TestPost:
+    def test_post_defaults(self, monkeypatch):
+        extract_post = MagicMock(return_value='{"title": "T"}')
+        monkeypatch.setattr(post_mod, "extract_post", extract_post)
+        result = runner.invoke(app, ["post"])
+        assert result.exit_code == 0
+        assert result.output.strip() == '{"title": "T"}'
+        extract_post.assert_called_once_with(max_comments=200, include_comments=True)
+
+    def test_post_flags_forwarded(self, monkeypatch):
+        extract_post = MagicMock(return_value="{}")
+        monkeypatch.setattr(post_mod, "extract_post", extract_post)
+        result = runner.invoke(app, ["post", "--max-comments", "5", "--no-comments"])
+        assert result.exit_code == 0
+        extract_post.assert_called_once_with(max_comments=5, include_comments=False)
+
+    def test_post_max_comments_out_of_range_rejected(self, monkeypatch):
+        extract_post = MagicMock(return_value="{}")
+        monkeypatch.setattr(post_mod, "extract_post", extract_post)
+        result = runner.invoke(app, ["post", "--max-comments", "0"])
+        assert result.exit_code != 0
+        extract_post.assert_not_called()
 
 
 class TestCaptcha:

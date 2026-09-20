@@ -262,6 +262,7 @@ llm-browser highlight <sel>          # Highlight an element
 llm-browser read [sel]               # Read the current page as plain text (CSS selector or @eN ref)
 llm-browser read <url> [--markdown]  # Fetch a URL directly (no browser tab)
 llm-browser extract [--text]         # Readability-style main content of the open page (Markdown by default)
+llm-browser post [--max-comments n] [--no-comments]  # Structured JSON for the open social/forum post (author, date, title, content, media, nested comments)
 llm-browser internalize-links        # Rewrite target="_blank" links to same-tab
 llm-browser tile-windows             # Tile open browser windows
 llm-browser mfa-code [totp-key]      # Generate a TOTP code
@@ -287,6 +288,65 @@ open* page's rendered HTML instead of a fresh fetch - use it (rather than
 `read <url>`) for JS-heavy or logged-in pages where the content only
 exists after the browser has rendered it. Falls back to the whole page's
 plain text if `trafilatura` finds no main-content region.
+
+`post` returns one JSON object for the post on the *currently open* page
+(it never navigates):
+
+```json
+{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|threads|quora|facebook|instagram|discourse|generic",
+ "title": "...", "author": {"name": "...", "handle": "...", "url": "..."},
+ "published": "ISO-8601 (or the site's raw date text)", "content": "post body",
+ "score": 123, "comment_count": 45,
+ "media": [{"type": "image|video|audio|link", "url": "...", "alt": "..."}],
+ "comments": [{"author": {...}, "published": "...", "content": "...",
+               "score": 3, "url": "...", "replies": [ ...same shape... ]}]}
+```
+
+Every key is always present (`null` / `[]` when unknown; X and Instagram
+have no `title`). Extraction is layered: a generic pass (JSON-LD
+`DiscussionForumPosting`/`SocialMediaPosting`/`Article`/`Question`, then
+OpenGraph/meta tags, then microdata and DOM heuristics for comment blocks)
+runs on every page, and a per-site adapter overrides it for `reddit.com`
+(old and new UI), `x.com`/`twitter.com`, `news.ycombinator.com`,
+`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `threads.com`/`threads.net` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse forums (detected from
+`<meta name="generator">`, so any hostname). `comments` are nested via
+`replies`, except on X (replies are flat) and Discourse (posts are a flat
+chronological list). `--max-comments` truncates in document order, so a
+reply is never returned without its parent; `comment_count` is the page's own
+total when it reports one, otherwise the number extracted. LinkedIn shows only relative ages ("1yr"), so
+`published` is decoded from the post/comment id (Snowflake timestamp); it has
+no `title`, a repost's original is appended to `content` under a
+"— Reshared from <name> —" line, and it has one reply level (reply nesting
+is keyed on LinkedIn's reply-list markup). Trustpilot has no
+post author/date: a business page (`/review/<domain>`) is modelled as a post
+about the business (`content` = TrustScore and page number) whose `comments`
+are that page's 20 reviews, in full (read from the page's embedded data, not
+the truncated cards) as `[rating/5] title` + text with `score` = helpful
+votes and a company reply as a nested reply; use `?page=N` for more, while
+`comment_count` is the business's total. A `/reviews/<id>` page is a post by
+the reviewer. G2 works the same way: a product page
+(`/products/<slug>/reviews`) is a post about the product (`content` = G2 rating
+and page number) whose `comments` are that page's 10 reviews as
+`[rating/5] title`, then each answer (like / dislike / problems solved ...)
+under its own question heading; use `?page=N` for more, while `comment_count`
+is the product's total. Threads has no `title`; replies come back flat
+(nested ones sit behind "Show replies"), counts are the abbreviated ones the
+site shows ("1K" -> 1000), and it only keeps a window of replies in the DOM, so
+`comments` is short of `comment_count` even after scrolling. Opening a post URL
+directly lands on the home feed with the post injected at the top; `post`
+detects that, clicks through to the real thread page itself (so run `post`
+before scrolling, then `scroll down ... --until-stable` and `post` again for
+more replies). A Quora question is a
+post with no author/date/content whose `comments` are its answers (answers
+to *related* questions shown on the page are excluded, and `comment_count`
+is the question's total answer count); Quora only shows relative ages, so
+`published` is text like `6y`, truncated "(more)" answers are expanded
+in place before reading, and Quora+ paywalled answers end where the paywall
+starts. Only comments
+present in the DOM are returned - scroll / click "load more" first. Facebook
+and Instagram are best-effort (obfuscated markup, login-walled) and X needs a
+session for replies; when nothing is found `post` waits ~10s, then warns on
+stderr and returns the null-filled object.
 
 See [`deep-research.md`](deep-research.md) for search + web-scraping
 recipes built on `search`, `snapshot`, `get`, `eval`, `read`, `extract`,
