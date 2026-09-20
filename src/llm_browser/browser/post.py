@@ -544,6 +544,74 @@ return {
 };
 """)
 
+# Trustpilot is a Next.js app whose review cards are truncated ("See more") in
+# the DOM, but `__NEXT_DATA__` carries every review in full. A business page
+# (`/review/<domain>`) has no author or date of its own: it is modelled as a
+# "post" about the business whose `comments` are that page's reviews (20 per
+# page - use `?page=N` for more), each rendered as `[rating/5] title` + text
+# with `score` = helpful votes. A single-review page (`/reviews/<id>`) is a
+# post by the reviewer. A company reply becomes a depth-1 comment.
+_TRUSTPILOT_JS = _script(r"""
+const el = document.getElementById('__NEXT_DATA__');
+if (!el) return null;
+let pp;
+try { pp = JSON.parse(el.textContent).props.pageProps; } catch (e) { return null; }
+const bu = pp.businessUnit || pp.business || {};
+const buName = bu.displayName || null;
+const reviewer = r => {
+  const c = r.consumer || {};
+  return person(c.displayName, null, c.id ? location.origin + '/users/' + c.id : null);
+};
+const stars = r => (r.rating ? '[' + r.rating + '/5] ' : '');
+const withReply = (r, entry) => {
+  const out = [entry];
+  const msg = r.reply && (r.reply.message || r.reply.text);
+  if (msg) {
+    out.push({depth: 1, author: person(buName, null, null), published: r.reply.publishedDate || null,
+              content: msg});
+  }
+  return out;
+};
+if (pp.review && !pp.reviews) {
+  const r = pp.review;
+  const comments = withReply(r, null).slice(1);
+  return {
+    title: r.title || '',
+    author: reviewer(r),
+    published: (r.dates && r.dates.publishedDate) || '',
+    content: (r.rating ? 'Rated ' + r.rating + '/5' + (buName ? ' - ' + buName : '') + '\n\n' : '') + (r.text || ''),
+    score: r.likes != null ? r.likes : '',
+    comment_count: comments.length,
+    media: [],
+    comments: comments.map(c => ({...c, depth: 0})),
+  };
+}
+if (!pp.reviews) return null;
+const pg = (pp.filters && pp.filters.pagination) || {};
+const comments = pp.reviews.flatMap(r => withReply(r, {
+  depth: 0,
+  author: reviewer(r),
+  published: (r.dates && r.dates.publishedDate) || null,
+  content: stars(r) + (r.title || '') + '\n\n' + (r.text || ''),
+  score: r.likes != null ? r.likes : null,
+  url: r.id ? location.origin + '/reviews/' + r.id : null,
+}));
+const media = [];
+if (bu.profileImageUrl) media.push({type: 'image', url: bu.profileImageUrl, alt: buName});
+if (bu.websiteUrl) media.push({type: 'link', url: bu.websiteUrl, alt: bu.websiteTitle || null});
+return {
+  title: (buName || '') + (bu.identifyingName ? ' (' + bu.identifyingName + ')' : '') + ' reviews',
+  author: '',
+  published: '',
+  content: 'TrustScore ' + bu.trustScore + '/5 - ' + bu.numberOfReviews + ' reviews' +
+    (pg.currentPage ? '\nShowing page ' + pg.currentPage + ' of ' + pg.totalPages : ''),
+  score: '',
+  comment_count: bu.numberOfReviews != null ? bu.numberOfReviews : null,
+  media,
+  comments,
+};
+""")
+
 # Discourse forums live on arbitrary hostnames, so unlike the adapters above
 # this one is detected from <meta name="generator"> (returns null elsewhere)
 # and tried on every otherwise-generic page. Posts are a flat chronological
@@ -594,6 +662,7 @@ _ADAPTERS: dict[str, tuple[str, str]] = {
     "facebook": ("facebook", _FACEBOOK_JS),
     "instagram": ("instagram", _INSTAGRAM_JS),
     "linkedin": ("linkedin", _LINKEDIN_JS),
+    "trustpilot": ("trustpilot", _TRUSTPILOT_JS),
 }
 
 # Hostname (after stripping www./m./mobile./web.) -> adapter key.
@@ -608,7 +677,11 @@ _HOSTS: dict[str, str] = {
     "facebook.com": "facebook",
     "instagram.com": "instagram",
     "linkedin.com": "linkedin",
+    "trustpilot.com": "trustpilot",
 }
+
+# Sites served from per-country subdomains (nz.trustpilot.com, ...).
+_HOST_SUFFIXES: dict[str, str] = {"trustpilot.com": "trustpilot"}
 
 _HOST_PREFIXES = ("www.", "m.", "mobile.", "web.")
 
@@ -624,6 +697,11 @@ def _adapter_for(url: str) -> tuple[str, str | None]:
             host = host[len(prefix) :]
             break
     key = _HOSTS.get(host)
+    if key is None:
+        key = next(
+            (k for suffix, k in _HOST_SUFFIXES.items() if host.endswith("." + suffix)),
+            None,
+        )
     if key is None:
         return "generic", None
     return _ADAPTERS[key]

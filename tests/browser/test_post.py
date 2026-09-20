@@ -46,6 +46,13 @@ class TestAdapterFor:
             ("https://m.facebook.com/u/posts/1", "facebook", "role="),
             ("https://www.instagram.com/p/abc/", "instagram", "og:description"),
             (
+                "https://nz.trustpilot.com/review/shopee.ph",
+                "trustpilot",
+                "__NEXT_DATA__",
+            ),
+            ("https://www.trustpilot.com/reviews/abc", "trustpilot", "__NEXT_DATA__"),
+            ("https://trustpilot.com/review/x.com", "trustpilot", "__NEXT_DATA__"),
+            (
                 "https://www.linkedin.com/posts/u_x-activity-7326818689821954048-wZ2W/",
                 "linkedin",
                 "feed-shared-update-v2",
@@ -62,6 +69,7 @@ class TestAdapterFor:
 
     def test_lookalike_host_is_generic(self):
         assert post._adapter_for("https://notreddit.com/")[0] == "generic"
+        assert post._adapter_for("https://nottrustpilot.com/")[0] == "generic"
 
 
 class TestNormalizers:
@@ -275,6 +283,43 @@ class TestExtractPost:
         assert result["content"] == "post text"
         assert (result["score"], result["comment_count"]) == (44, 2)
         assert result["comments"][0]["replies"][0]["content"] == "reply"
+
+    def test_trustpilot_business_page_overrides_generic_junk(self, monkeypatch):
+        _driver(
+            monkeypatch,
+            "https://nz.trustpilot.com/review/shopee.ph?page=2",
+            generic={
+                "title": 'Shopee is rated "Bad" with 1.4 / 5 on Trustpilot',
+                "published": "2026-09-10T19:51:19.000Z",
+                "content": "nav chrome",
+            },
+            adapter={
+                "title": "Shopee (shopee.ph) reviews",
+                "author": "",
+                "published": "",
+                "score": "",
+                "content": "TrustScore 1.4/5 - 334 reviews\nShowing page 2 of 16",
+                "comment_count": 334,
+                "comments": [
+                    {
+                        "depth": 0,
+                        "author": {"name": "a"},
+                        "content": "[1/5] t\n\nbody",
+                        "score": 1,
+                    },
+                    {"depth": 1, "author": {"name": "Shopee"}, "content": "our reply"},
+                ],
+            },
+        )
+        result = _run()
+        assert result["platform"] == "trustpilot"
+        assert result["title"] == "Shopee (shopee.ph) reviews"
+        assert result["author"] is None and result["published"] is None
+        assert result["score"] is None
+        assert result["comment_count"] == 334
+        review = result["comments"][0]
+        assert review["score"] == 1
+        assert review["replies"][0]["content"] == "our reply"
 
     def test_empty_title_override_drops_generic_title(self, monkeypatch):
         _driver(

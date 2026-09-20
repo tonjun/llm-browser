@@ -293,7 +293,7 @@ plain text if `trafilatura` finds no main-content region.
 (it never navigates):
 
 ```json
-{"url": "...", "platform": "reddit|x|hackernews|linkedin|facebook|instagram|discourse|generic",
+{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|facebook|instagram|discourse|generic",
  "title": "...", "author": {"name": "...", "handle": "...", "url": "..."},
  "published": "ISO-8601 (or the site's raw date text)", "content": "post body",
  "score": 123, "comment_count": 45,
@@ -308,7 +308,7 @@ have no `title`). Extraction is layered: a generic pass (JSON-LD
 OpenGraph/meta tags, then microdata and DOM heuristics for comment blocks)
 runs on every page, and a per-site adapter overrides it for `reddit.com`
 (old and new UI), `x.com`/`twitter.com`, `news.ycombinator.com`,
-`linkedin.com` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse forums (detected from
+`linkedin.com` (needs a logged-in session), `trustpilot.com` (any country subdomain), `facebook.com`, `instagram.com`, and Discourse forums (detected from
 `<meta name="generator">`, so any hostname). `comments` are nested via
 `replies`, except on X (replies are flat) and Discourse (posts are a flat
 chronological list). `--max-comments` truncates in document order, so a
@@ -317,7 +317,14 @@ total when it reports one, otherwise the number extracted. LinkedIn shows only r
 `published` is decoded from the post/comment id (Snowflake timestamp); it has
 no `title`, a repost's original is appended to `content` under a
 "— Reshared from <name> —" line, and it has one reply level (reply nesting
-is keyed on LinkedIn's reply-list markup). Only comments
+is keyed on LinkedIn's reply-list markup). Trustpilot has no
+post author/date: a business page (`/review/<domain>`) is modelled as a post
+about the business (`content` = TrustScore and page number) whose `comments`
+are that page's 20 reviews, in full (read from the page's embedded data, not
+the truncated cards) as `[rating/5] title` + text with `score` = helpful
+votes and a company reply as a nested reply; use `?page=N` for more, while
+`comment_count` is the business's total. A `/reviews/<id>` page is a post by
+the reviewer. Only comments
 present in the DOM are returned - scroll / click "load more" first. Facebook
 and Instagram are best-effort (obfuscated markup, login-walled) and X needs a
 session for replies; when nothing is found `post` waits ~10s, then warns on
