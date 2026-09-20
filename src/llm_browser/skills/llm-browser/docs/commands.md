@@ -293,7 +293,7 @@ plain text if `trafilatura` finds no main-content region.
 (it never navigates):
 
 ```json
-{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|facebook|instagram|discourse|generic",
+{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|quora|facebook|instagram|discourse|generic",
  "title": "...", "author": {"name": "...", "handle": "...", "url": "..."},
  "published": "ISO-8601 (or the site's raw date text)", "content": "post body",
  "score": 123, "comment_count": 45,
@@ -308,7 +308,7 @@ have no `title`). Extraction is layered: a generic pass (JSON-LD
 OpenGraph/meta tags, then microdata and DOM heuristics for comment blocks)
 runs on every page, and a per-site adapter overrides it for `reddit.com`
 (old and new UI), `x.com`/`twitter.com`, `news.ycombinator.com`,
-`linkedin.com` (needs a logged-in session), `trustpilot.com` (any country subdomain), `facebook.com`, `instagram.com`, and Discourse forums (detected from
+`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `facebook.com`, `instagram.com`, and Discourse forums (detected from
 `<meta name="generator">`, so any hostname). `comments` are nested via
 `replies`, except on X (replies are flat) and Discourse (posts are a flat
 chronological list). `--max-comments` truncates in document order, so a
@@ -324,7 +324,18 @@ are that page's 20 reviews, in full (read from the page's embedded data, not
 the truncated cards) as `[rating/5] title` + text with `score` = helpful
 votes and a company reply as a nested reply; use `?page=N` for more, while
 `comment_count` is the business's total. A `/reviews/<id>` page is a post by
-the reviewer. Only comments
+the reviewer. G2 works the same way: a product page
+(`/products/<slug>/reviews`) is a post about the product (`content` = G2 rating
+and page number) whose `comments` are that page's 10 reviews as
+`[rating/5] title`, then each answer (like / dislike / problems solved ...)
+under its own question heading; use `?page=N` for more, while `comment_count`
+is the product's total. A Quora question is a
+post with no author/date/content whose `comments` are its answers (answers
+to *related* questions shown on the page are excluded, and `comment_count`
+is the question's total answer count); Quora only shows relative ages, so
+`published` is text like `6y`, truncated "(more)" answers are expanded
+in place before reading, and Quora+ paywalled answers end where the paywall
+starts. Only comments
 present in the DOM are returned - scroll / click "load more" first. Facebook
 and Instagram are best-effort (obfuscated markup, login-walled) and X needs a
 session for replies; when nothing is found `post` waits ~10s, then warns on

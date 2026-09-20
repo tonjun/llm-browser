@@ -53,6 +53,14 @@ class TestAdapterFor:
             ("https://www.trustpilot.com/reviews/abc", "trustpilot", "__NEXT_DATA__"),
             ("https://trustpilot.com/review/x.com", "trustpilot", "__NEXT_DATA__"),
             (
+                "https://www.g2.com/products/ibm-watsonx-ai/reviews",
+                "g2",
+                "Review collected by",
+            ),
+            ("https://g2.com/products/x/reviews?page=2", "g2", "survey_responses"),
+            ("https://www.quora.com/What-is-x", "quora", "dom_annotate"),
+            ("https://es.quora.com/Que-es-x", "quora", "dom_annotate"),
+            (
                 "https://www.linkedin.com/posts/u_x-activity-7326818689821954048-wZ2W/",
                 "linkedin",
                 "feed-shared-update-v2",
@@ -70,6 +78,8 @@ class TestAdapterFor:
     def test_lookalike_host_is_generic(self):
         assert post._adapter_for("https://notreddit.com/")[0] == "generic"
         assert post._adapter_for("https://nottrustpilot.com/")[0] == "generic"
+        assert post._adapter_for("https://notquora.com/")[0] == "generic"
+        assert post._adapter_for("https://notg2.com/")[0] == "generic"
 
 
 class TestNormalizers:
@@ -320,6 +330,93 @@ class TestExtractPost:
         review = result["comments"][0]
         assert review["score"] == 1
         assert review["replies"][0]["content"] == "our reply"
+
+    def test_g2_product_page_lists_reviews_as_comments(self, monkeypatch):
+        _driver(
+            monkeypatch,
+            "https://www.g2.com/products/ibm-watsonx-ai/reviews",
+            generic={"title": "The G2 on IBM watsonx.ai", "content": "nav chrome"},
+            adapter={
+                "title": "IBM watsonx.ai reviews",
+                "author": "",
+                "published": "",
+                "score": "",
+                "content": "G2 rating 4.4/5 - 153 reviews\nShowing page 1 of 16",
+                "comment_count": 153,
+                "media": [],
+                "comments": [
+                    {
+                        "depth": 0,
+                        "author": {"name": "Manan S.", "url": "/users/1"},
+                        "published": "2026-07-29T16:53:48-05:00",
+                        "content": "[4/5] Great\n\nWhat do you like best?\n\nEverything",
+                        "url": "/survey_responses/ibm-watsonx-ai-review-1",
+                    },
+                ],
+            },
+        )
+        result = _run()
+        assert result["platform"] == "g2"
+        assert result["title"] == "IBM watsonx.ai reviews"
+        assert result["author"] is None and result["published"] is None
+        assert result["comment_count"] == 153
+        review = result["comments"][0]
+        assert review["content"].startswith("[4/5] Great")
+        assert review["author"]["url"] == "https://www.g2.com/users/1"
+        assert review["url"] == (
+            "https://www.g2.com/survey_responses/ibm-watsonx-ai-review-1"
+        )
+
+    def test_rereads_while_adapter_reports_pending(self, monkeypatch):
+        """Quora's adapter clicks "(more)" and reports pending=True; the next
+        read sees the expanded text."""
+        driver = MagicMock()
+        driver.get_current_url.return_value = "https://www.quora.com/What-is-x"
+        answers = iter(
+            [
+                {
+                    "title": "Q",
+                    "pending": True,
+                    "comments": [{"author": "a", "content": "short ... (more)"}],
+                },
+                {
+                    "title": "Q",
+                    "pending": False,
+                    "comments": [{"author": "a", "content": "the full answer"}],
+                },
+            ]
+        )
+
+        def evaluate(js):
+            if js == post._GENERIC_JS:
+                return json.dumps({"title": "generic"})
+            return json.dumps(next(answers))
+
+        driver.evaluate.side_effect = evaluate
+        monkeypatch.setattr(post, "with_driver", lambda fn: fn(driver))
+        monkeypatch.setattr(post.time, "sleep", lambda s: None)
+        result = _run()
+        assert result["platform"] == "quora"
+        assert result["comments"][0]["content"] == "the full answer"
+        assert "pending" not in result
+
+    def test_pending_forever_gives_up_without_hint(self, monkeypatch, capsys):
+        _driver(
+            monkeypatch,
+            "https://www.quora.com/What-is-x",
+            generic={"title": "generic"},
+            adapter={
+                "title": "Q",
+                "pending": True,
+                "comments": [{"author": "a", "content": "c ... (more)"}],
+            },
+        )
+        ticks = iter([0.0, 5.0, 11.0])
+        monkeypatch.setattr(post.time, "monotonic", lambda: next(ticks))
+        result = _run()
+        assert result["title"] == "Q"
+        assert result["comments"][0]["content"] == "c ... (more)"
+        assert capsys.readouterr().err == ""
 
     def test_empty_title_override_drops_generic_title(self, monkeypatch):
         _driver(

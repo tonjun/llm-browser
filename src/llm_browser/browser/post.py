@@ -612,6 +612,136 @@ return {
 };
 """)
 
+# G2: a product page (`/products/<slug>/reviews`) is modelled like Trustpilot's
+# business page - a "post" about the product (no author/date; `content` = the
+# rating summary and page number) whose `comments` are that page's 10 reviews
+# (`?page=N` for more). Author, date, title and rating come from the page's
+# JSON-LD `SoftwareApplication.review` list (the first SoftwareApplication has
+# only G2's own summary "review" with no body, so the one whose reviews carry
+# a `reviewBody` is used). The JSON-LD body is the like/dislike/problems
+# answers run together with no labels, so the text is rebuilt from the review
+# card (`article#<slug>-review-<id>`, same order): everything after the
+# "N/5" line, split at each "Review collected by and hosted on G2.com." so
+# every answer keeps its question as a heading. Falls back to the JSON-LD body
+# if the cards don't line up. Each review is `[rating/5] title`.
+_G2_JS = _script(r"""
+const apps = [];
+const walk = n => {
+  if (!n || typeof n !== 'object') return;
+  if (Array.isArray(n)) return n.forEach(walk);
+  if ([].concat(n['@type'] || []).includes('SoftwareApplication')) apps.push(n);
+  walk(n['@graph']);
+  walk(n.mainEntity);
+};
+document.querySelectorAll('script[type="application/ld+json"]').forEach(s => {
+  try { walk(JSON.parse(s.textContent)); } catch (e) {}
+});
+const app = apps.find(a => [].concat(a.review || []).some(r => r.reviewBody));
+if (!app) return null;
+const reviews = [].concat(app.review).filter(r => r.reviewBody);
+const arts = Array.from(document.querySelectorAll('article[id*="-review-"]'));
+const aligned = arts.length === reviews.length;
+const MARK = 'Review collected by and hosted on G2.com.';
+const cardBody = art => {
+  const t = txt(art);
+  const m = t.match(/^\d(?:\.\d)?\/5$/m);
+  if (!m) return null;
+  const chunks = t.slice(m.index + m[0].length).split(MARK);
+  chunks.pop();  // trailing badges ("Show More", "Validated Reviewer", ...)
+  const out = chunks.map(c => c.trim()).filter(Boolean).join('\n\n');
+  return out || null;
+};
+const comments = reviews.map((r, i) => {
+  const art = aligned ? arts[i] : null;
+  const a = art && art.querySelector('a[href*="/users/"]');
+  const rating = r.reviewRating && r.reviewRating.ratingValue;
+  return {
+    depth: 0,
+    author: person(r.author && r.author.name, null, a ? a.href : null),
+    published: r.datePublished || null,
+    content: (rating ? '[' + rating + '/5] ' : '') + (r.name || '') + '\n\n' +
+      ((art && cardBody(art)) || r.reviewBody),
+    url: art ? location.origin + '/survey_responses/' + art.id : null,
+  };
+});
+const agg = apps.map(a => a.aggregateRating).find(g => g && Number(g.bestRating) === 5) || app.aggregateRating || {};
+const total = Number(agg.reviewCount) || null;
+const page = Number(new URLSearchParams(location.search).get('page')) || 1;
+const pages = total && reviews.length ? Math.ceil(total / reviews.length) : null;
+const media = [];
+const logo = app.image || app.logo;
+if (typeof logo === 'string') media.push({type: 'image', url: logo, alt: app.name || null});
+return {
+  title: (app.name || '') + ' reviews',
+  author: '',
+  published: '',
+  content: (agg.ratingValue ? 'G2 rating ' + agg.ratingValue + '/5' + (total ? ' - ' + total + ' reviews' : '') : '') +
+    (pages ? '\nShowing page ' + page + ' of ' + pages : ''),
+  score: '',
+  comment_count: total,
+  media,
+  comments,
+};
+""")
+
+# Quora: a question page is a post (the question, no author/date) whose
+# `comments` are its answers. Class names are hashed, but Quora's own
+# `dom_annotate_*` / `puppeteer_test_*` hooks are stable. The page also lists
+# answers to *related* questions, so items are filtered to this question's
+# path. Long answers are truncated behind "(more)": the adapter clicks those
+# (expanding in place, no navigation) and returns `pending: true` so the
+# caller re-reads until none are left. Answers only carry relative ages
+# ("6y"), kept as-is. Quora+ paywalled answers end at an "Access this answer"
+# block, which is cut off. Only the answers Quora has rendered are seen.
+_QUORA_JS = _script(r"""
+const title = document.querySelector('.puppeteer_test_question_main .puppeteer_test_question_title') ||
+  document.querySelector('.puppeteer_test_question_title');
+if (!title) return null;
+const ITEM = '[class*="dom_annotate_question_answer_item_"]';
+const path = location.pathname.replace(/\/$/, '');
+const items = Array.from(document.querySelectorAll(ITEM)).filter(i => {
+  const t = i.querySelector('a.answer_timestamp');
+  return t && new URL(t.href).pathname.startsWith(path + '/answer/');
+});
+const more = items.flatMap(i => Array.from(i.querySelectorAll('.qt_read_more')));
+more.forEach(m => m.click());
+const tidy = t => t
+  .split(/\nAccess this answer and support the author/)[0]
+  .replace(/\s*(…|\.\.\.)?\s*\(more\)\s*$/, '…')
+  .trim();
+const media = [];
+const comments = items.map(i => {
+  const content = i.querySelector('.puppeteer_test_answer_content');
+  const profile = Array.from(i.querySelectorAll('a[href*="/profile/"]')).find(a => txt(a));
+  const ts = i.querySelector('a.answer_timestamp');
+  const up = i.querySelector('.dom_annotate_answer_action_bar_upvote');
+  if (content) content.querySelectorAll('img').forEach(m => {
+    if (/^https?:/.test(m.src)) media.push({type: 'image', url: m.src, alt: m.alt || null});
+  });
+  return {
+    depth: 0,
+    author: person(profile ? txt(profile) : null, null, profile ? profile.href.split('?')[0] : null),
+    published: txt(ts),
+    content: content ? tidy(txt(content)) : null,
+    score: up ? txt(up) : null,
+    url: ts ? ts.href : null,
+  };
+});
+const desc = (document.querySelector('meta[property="og:description"]') || {}).content || '';
+const total = desc.match(/\(\d+ of (\d+)\)/);
+return {
+  title: txt(title),
+  author: '',
+  published: '',
+  content: '',
+  score: '',
+  comment_count: total ? Number(total[1]) : null,
+  media,
+  comments,
+  pending: more.length > 0,
+};
+""")
+
 # Discourse forums live on arbitrary hostnames, so unlike the adapters above
 # this one is detected from <meta name="generator"> (returns null elsewhere)
 # and tried on every otherwise-generic page. Posts are a flat chronological
@@ -663,6 +793,8 @@ _ADAPTERS: dict[str, tuple[str, str]] = {
     "instagram": ("instagram", _INSTAGRAM_JS),
     "linkedin": ("linkedin", _LINKEDIN_JS),
     "trustpilot": ("trustpilot", _TRUSTPILOT_JS),
+    "g2": ("g2", _G2_JS),
+    "quora": ("quora", _QUORA_JS),
 }
 
 # Hostname (after stripping www./m./mobile./web.) -> adapter key.
@@ -678,10 +810,15 @@ _HOSTS: dict[str, str] = {
     "instagram.com": "instagram",
     "linkedin.com": "linkedin",
     "trustpilot.com": "trustpilot",
+    "g2.com": "g2",
+    "quora.com": "quora",
 }
 
 # Sites served from per-country subdomains (nz.trustpilot.com, ...).
-_HOST_SUFFIXES: dict[str, str] = {"trustpilot.com": "trustpilot"}
+_HOST_SUFFIXES: dict[str, str] = {
+    "trustpilot.com": "trustpilot",
+    "quora.com": "quora",
+}
 
 _HOST_PREFIXES = ("www.", "m.", "mobile.", "web.")
 
@@ -886,14 +1023,19 @@ def extract_post(max_comments: int = 200, include_comments: bool = True) -> str:
         # Known sites render client-side, so wait for the adapter to match;
         # on generic pages the baseline metadata is available immediately.
         ready = adapter if platform != "generic" else generic
-        if ready and (ready.get("title") or ready.get("content")):
+        found = bool(ready and (ready.get("title") or ready.get("content")))
+        # An adapter may set `pending` after triggering more content to load
+        # (e.g. expanding truncated answers): re-read until it clears.
+        pending = bool(adapter and adapter.get("pending"))
+        if found and not pending:
             break
         if time.monotonic() >= deadline:
-            print(
-                "No post found (possible login wall, or not a post page); "
-                "run `snapshot` to see what is on the page.",
-                file=sys.stderr,
-            )
+            if not found:
+                print(
+                    "No post found (possible login wall, or not a post page); "
+                    "run `snapshot` to see what is on the page.",
+                    file=sys.stderr,
+                )
             break
         time.sleep(_POLL_INTERVAL)
     post = _build_post(url, platform, merged, max_comments, include_comments)
