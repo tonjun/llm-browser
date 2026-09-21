@@ -293,7 +293,7 @@ plain text if `trafilatura` finds no main-content region.
 (it never navigates):
 
 ```json
-{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|threads|quora|facebook|instagram|discourse|generic",
+{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|threads|quora|stomp|facebook|instagram|discourse|generic",
  "title": "...", "author": {"name": "...", "handle": "...", "url": "..."},
  "published": "ISO-8601 (or the site's raw date text)", "content": "post body",
  "score": 123, "comment_count": 45,
@@ -308,7 +308,7 @@ have no `title`). Extraction is layered: a generic pass (JSON-LD
 OpenGraph/meta tags, then microdata and DOM heuristics for comment blocks)
 runs on every page, and a per-site adapter overrides it for `reddit.com`
 (old and new UI), `x.com`/`twitter.com`, `news.ycombinator.com`,
-`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `threads.com`/`threads.net` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse forums (detected from
+`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `stomp.sg`, `threads.com`/`threads.net` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse forums (detected from
 `<meta name="generator">`, so any hostname). `comments` are nested via
 `replies`, except on X (replies are flat) and Discourse (posts are a flat
 chronological list). `--max-comments` truncates in document order, so a
@@ -342,7 +342,10 @@ to *related* questions shown on the page are excluded, and `comment_count`
 is the question's total answer count); Quora only shows relative ages, so
 `published` is text like `6y`, truncated "(more)" answers are expanded
 in place before reading, and Quora+ paywalled answers end where the paywall
-starts. Only comments
+starts. A Stomp article's body is read from the
+page and its comments (a cross-origin Disqus iframe) are fetched from the
+Disqus embed, so they are returned nested without scrolling (`comment_count`
+is Disqus's total; `published` is UTC). Only comments
 present in the DOM are returned - scroll / click "load more" first. Facebook
 and Instagram are best-effort (obfuscated markup, login-walled) and X needs a
 session for replies; when nothing is found `post` waits ~10s, then warns on

@@ -12,12 +12,14 @@ via ``d.evaluate`` and the results are normalized in Python.
 
 from __future__ import annotations
 
+import html
 import json
 import re
 import sys
 import time
 from typing import Any
 from urllib.parse import urljoin, urlparse
+from urllib.request import Request, urlopen
 
 from seleniumbase.core.sb_cdp import CDPMethods
 
@@ -871,6 +873,54 @@ return {
 };
 """)
 
+# Stomp (stomp.sg) articles: JSON-LD has no body, so the text is read from
+# the paragraphs following the masthead (skipping the ad / promo / embed
+# <div>s interleaved between them). Reader comments are a cross-origin
+# Disqus iframe the page can't read, so the extractor only reports the
+# Disqus embed URL (`disqus_url`) and extract_post() fetches the comments.
+_STOMP_JS = _script(r"""
+const h1 = document.querySelector('h1.article-headline');
+if (!h1) return null;
+let body = null;
+for (let n = h1; n && n !== document.body && !body; n = n.parentElement) {
+  const s = n.nextElementSibling;
+  if (s && s.querySelectorAll(':scope > p').length >= 2) body = s;
+}
+const blocks = body
+  ? Array.from(body.children).filter(c => /^(P|H[2-4]|UL|OL|BLOCKQUOTE)$/.test(c.tagName))
+  : [];
+const media = [];
+const hero = h1.closest('main') && h1.closest('main').querySelector('figure picture img');
+if (hero) {
+  const cap = hero.closest('figure').querySelector('figcaption div');
+  media.push({type: 'image', url: hero.currentSrc || hero.src, alt: txt(cap) || hero.alt || null});
+}
+// The body <div> also holds related-story widgets and the page footer, so
+// only look at the text blocks and at embeds before the closing <hr>.
+blocks.forEach(b => b.querySelectorAll('img').forEach(i => {
+  if (/^https?:/.test(i.src)) media.push({type: 'image', url: i.src, alt: i.alt || null});
+}));
+if (body) {
+  for (const c of body.children) {
+    if (c.tagName === 'HR') break;
+    c.querySelectorAll('[data-href]').forEach(e => media.push({type: 'link', url: e.getAttribute('data-href'), alt: null}));
+  }
+}
+const slot = document.querySelector('[id^="comments-"]');
+const id = slot ? slot.id.slice('comments-'.length) : null;
+const canonical = (document.querySelector('meta[property="og:url"]') || {}).content || location.href.split(/[?#]/)[0];
+return {
+  title: txt(h1),
+  author: authorOf(document.querySelector('a[href^="/author/"]')),
+  content: blocks.map(b => ownText(b, null)).filter(Boolean).join('\n\n') || null,
+  media,
+  disqus_url: id
+    ? 'https://disqus.com/embed/comments/?base=default&f=stompsg&s_o=default' +
+      '&t_i=' + encodeURIComponent('node/' + id) + '&t_u=' + encodeURIComponent(canonical)
+    : null,
+};
+""")
+
 # adapter key -> (platform, extractor)
 _ADAPTERS: dict[str, tuple[str, str]] = {
     "old_reddit": ("reddit", _OLD_REDDIT_JS),
@@ -884,6 +934,7 @@ _ADAPTERS: dict[str, tuple[str, str]] = {
     "g2": ("g2", _G2_JS),
     "threads": ("threads", _THREADS_JS),
     "quora": ("quora", _QUORA_JS),
+    "stomp": ("stomp", _STOMP_JS),
 }
 
 # Hostname (after stripping www./m./mobile./web.) -> adapter key.
@@ -903,6 +954,7 @@ _HOSTS: dict[str, str] = {
     "threads.com": "threads",
     "threads.net": "threads",
     "quora.com": "quora",
+    "stomp.sg": "stomp",
 }
 
 # Sites served from per-country subdomains (nz.trustpilot.com, ...).
@@ -1105,6 +1157,58 @@ def _read_page(d: CDPMethods) -> tuple[str, str, dict[str, Any], dict[str, Any] 
     return url, platform, generic, adapter
 
 
+_DISQUS_DATA_RE = re.compile(
+    r'<script type="text/json" id="disqus-threadData">(.*?)</script>', re.DOTALL
+)
+
+
+def _disqus_comments(
+    embed_url: str, page_url: str
+) -> tuple[list[dict[str, Any]], int | None]:
+    """Comments (flat, threaded document order, each with ``depth``) and the
+    total count from a Disqus embed page. Disqus renders the comments in a
+    cross-origin iframe that page JS can't read, but the embed HTML carries
+    the whole first page of the thread as JSON. Network/parse failures warn
+    on stderr and yield no comments."""
+    request = Request(
+        embed_url,
+        headers={"User-Agent": "Mozilla/5.0", "Referer": page_url},
+    )
+    try:
+        with urlopen(request, timeout=15) as response:
+            page = response.read().decode("utf-8", "replace")
+        match = _DISQUS_DATA_RE.search(page)
+        if match is None:
+            raise ValueError("no thread data in Disqus embed")
+        data = json.loads(match.group(1))
+    except (OSError, ValueError) as exc:
+        print(f"Could not load Disqus comments: {exc}", file=sys.stderr)
+        return [], None
+    base = page_url.split("#")[0]
+    comments = []
+    for post in data.get("response", {}).get("posts") or []:
+        if post.get("isDeleted") or not isinstance(post.get("author"), dict):
+            continue
+        author = post["author"]
+        created = post.get("createdAt")
+        comments.append(
+            {
+                "depth": post.get("depth"),
+                "author": {
+                    "name": author.get("name"),
+                    "handle": author.get("username"),
+                    "url": author.get("profileUrl"),
+                },
+                # Disqus timestamps are naive UTC.
+                "published": f"{created}Z" if created else None,
+                "content": html.unescape(post.get("raw_message") or ""),
+                "score": post.get("likes"),
+                "url": f"{base}#comment-{post.get('id')}",
+            }
+        )
+    return comments, (data.get("cursor") or {}).get("total")
+
+
 def extract_post(max_comments: int = 200, include_comments: bool = True) -> str:
     """Structured JSON for the post on the currently open page."""
     deadline = time.monotonic() + _WAIT_SECONDS
@@ -1129,5 +1233,9 @@ def extract_post(max_comments: int = 200, include_comments: bool = True) -> str:
                 )
             break
         time.sleep(_POLL_INTERVAL)
+    if include_comments and adapter and adapter.get("disqus_url"):
+        merged["comments"], total = _disqus_comments(adapter["disqus_url"], url)
+        if total is not None:
+            merged["comment_count"] = total
     post = _build_post(url, platform, merged, max_comments, include_comments)
     return json.dumps(post, ensure_ascii=False)
