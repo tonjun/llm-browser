@@ -67,6 +67,11 @@ class TestAdapterFor:
             ("https://www.quora.com/What-is-x", "quora", "dom_annotate"),
             ("https://es.quora.com/Que-es-x", "quora", "dom_annotate"),
             (
+                "https://www.stomp.sg/trending-now/some-story?ref=home-top-reads",
+                "stomp",
+                "article-headline",
+            ),
+            (
                 "https://www.linkedin.com/posts/u_x-activity-7326818689821954048-wZ2W/",
                 "linkedin",
                 "feed-shared-update-v2",
@@ -87,6 +92,80 @@ class TestAdapterFor:
         assert post._adapter_for("https://notquora.com/")[0] == "generic"
         assert post._adapter_for("https://notg2.com/")[0] == "generic"
         assert post._adapter_for("https://notthreads.com/")[0] == "generic"
+        assert post._adapter_for("https://notstomp.sg/")[0] == "generic"
+
+
+class TestDisqusComments:
+    @staticmethod
+    def _page(payload):
+        body = json.dumps(payload)
+        html = f'<script type="text/json" id="disqus-threadData">{body}</script>'
+        response = MagicMock()
+        response.read.return_value = html.encode()
+        response.__enter__.return_value = response
+        return response
+
+    def test_parses_thread_data(self, monkeypatch):
+        payload = {
+            "cursor": {"total": 3},
+            "response": {
+                "posts": [
+                    {
+                        "id": "1",
+                        "depth": 0,
+                        "likes": 4,
+                        "createdAt": "2026-09-13T03:04:31",
+                        "raw_message": "It&#x27;s bad\n\nreally",
+                        "author": {
+                            "name": "A",
+                            "username": "a",
+                            "profileUrl": "https://disqus.com/by/a/",
+                        },
+                    },
+                    {"id": "2", "depth": 1, "isDeleted": True, "author": {"name": "B"}},
+                    {
+                        "id": "3",
+                        "depth": 1,
+                        "raw_message": "hi",
+                        "author": {"name": "C"},
+                    },
+                ]
+            },
+        }
+        monkeypatch.setattr(post, "urlopen", lambda req, timeout: self._page(payload))
+        comments, total = post._disqus_comments(
+            "https://disqus.com/embed/", "https://www.stomp.sg/x?ref=y#z"
+        )
+        assert total == 3
+        assert [c["depth"] for c in comments] == [0, 1]
+        assert comments[0] == {
+            "depth": 0,
+            "author": {
+                "name": "A",
+                "handle": "a",
+                "url": "https://disqus.com/by/a/",
+            },
+            "published": "2026-09-13T03:04:31Z",
+            "content": "It's bad\n\nreally",
+            "score": 4,
+            "url": "https://www.stomp.sg/x?ref=y#comment-1",
+        }
+
+    def test_network_error_warns_and_returns_nothing(self, monkeypatch, capsys):
+        def boom(req, timeout):
+            raise OSError("offline")
+
+        monkeypatch.setattr(post, "urlopen", boom)
+        assert post._disqus_comments("https://disqus.com/embed/", "u") == ([], None)
+        assert "Could not load Disqus comments: offline" in capsys.readouterr().err
+
+    def test_missing_thread_data_warns(self, monkeypatch, capsys):
+        response = MagicMock()
+        response.read.return_value = b"<html></html>"
+        response.__enter__.return_value = response
+        monkeypatch.setattr(post, "urlopen", lambda req, timeout: response)
+        assert post._disqus_comments("https://disqus.com/embed/", "u") == ([], None)
+        assert "no thread data" in capsys.readouterr().err
 
 
 class TestNormalizers:
@@ -411,6 +490,57 @@ class TestExtractPost:
         assert result["author"]["url"] == "https://www.threads.com/@openai"
         assert (result["score"], result["comment_count"]) == (1000, 61)
         assert [c["content"] for c in result["comments"]] == ["Wow", "Nice"]
+
+    def test_stomp_comments_come_from_disqus(self, monkeypatch):
+        """Stomp's adapter only reports the Disqus embed URL; the comments
+        are fetched from it and replace the (empty) generic ones."""
+        url = "https://www.stomp.sg/trending-now/some-story?ref=home-top-reads"
+        _driver(
+            monkeypatch,
+            url,
+            generic={
+                "title": "generic",
+                "content": "summary",
+                "published": "2026-09-12",
+            },
+            adapter={
+                "title": "Story",
+                "content": "full body",
+                "disqus_url": "https://disqus.com/embed/comments/?f=stompsg",
+            },
+        )
+        fetched = []
+
+        def fake_disqus(embed_url, page_url):
+            fetched.append((embed_url, page_url))
+            return (
+                [
+                    {"depth": 0, "author": {"name": "a"}, "content": "top"},
+                    {"depth": 1, "author": {"name": "b"}, "content": "reply"},
+                ],
+                20,
+            )
+
+        monkeypatch.setattr(post, "_disqus_comments", fake_disqus)
+        result = _run()
+        assert result["platform"] == "stomp"
+        assert (result["title"], result["content"]) == ("Story", "full body")
+        assert result["published"] == "2026-09-12"
+        assert result["comment_count"] == 20
+        assert result["comments"][0]["replies"][0]["content"] == "reply"
+        assert fetched == [("https://disqus.com/embed/comments/?f=stompsg", url)]
+
+    def test_stomp_no_comments_skips_disqus(self, monkeypatch):
+        _driver(
+            monkeypatch,
+            "https://www.stomp.sg/trending-now/some-story",
+            generic={"title": "generic"},
+            adapter={"title": "Story", "disqus_url": "https://disqus.com/embed/"},
+        )
+        monkeypatch.setattr(
+            post, "_disqus_comments", lambda *a: pytest.fail("fetched Disqus")
+        )
+        assert _run(include_comments=False)["comments"] == []
 
     def test_rereads_while_adapter_reports_pending(self, monkeypatch):
         """Quora's adapter clicks "(more)" and reports pending=True; the next
