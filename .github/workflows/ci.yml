@@ -15,7 +15,7 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
       - run: uv python install ${{ matrix.python-version }}
       - run: uv sync --python ${{ matrix.python-version }}
       - run: make lint
