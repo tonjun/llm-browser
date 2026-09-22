@@ -352,6 +352,51 @@ class TestExtractPost:
         )
         assert _run()["platform"] == "generic"
 
+    def test_unknown_host_tries_xenforo_detection_after_discourse_miss(
+        self, monkeypatch
+    ):
+        """forums.hardwarezone.com.sg (and any other XenForo forum) isn't in
+        the host map, so it's picked up the same way Discourse is: detected
+        from the page's own markup, tried after Discourse misses."""
+        driver = MagicMock()
+        driver.get_current_url.return_value = (
+            "https://forums.hardwarezone.com.sg/threads/some-thread.123/"
+        )
+        xenforo_adapter = {
+            "title": "Some thread",
+            "author": {"name": "alice", "url": "/members/alice.1/"},
+            "published": "2024-07-05T09:47:27+0800",
+            "content": "OP body",
+            "media": [],
+            "comments": [{"depth": 0, "author": {"name": "bob"}, "content": "reply"}],
+        }
+
+        def evaluate(js):
+            if js == post._GENERIC_JS:
+                return json.dumps({"title": "generic title"})
+            if js == post._DISCOURSE_JS:
+                return json.dumps(None)
+            if js == post._XENFORO_JS:
+                return json.dumps(xenforo_adapter)
+            raise AssertionError(f"unexpected script: {js!r}")
+
+        driver.evaluate.side_effect = evaluate
+        monkeypatch.setattr(post, "with_driver", lambda fn: fn(driver))
+        monkeypatch.setattr(post.time, "sleep", lambda s: None)
+
+        result = _run()
+        assert result["platform"] == "xenforo"
+        assert result["title"] == "Some thread"
+        assert result["author"]["name"] == "alice"
+        assert result["content"] == "OP body"
+        assert result["comments"][0]["content"] == "reply"
+        # generic, then Discourse (miss), then XenForo (hit) - in that order.
+        assert [c.args[0] for c in driver.evaluate.call_args_list] == [
+            post._GENERIC_JS,
+            post._DISCOURSE_JS,
+            post._XENFORO_JS,
+        ]
+
     def test_linkedin_adapter_overrides_page_title_and_nests_replies(self, monkeypatch):
         _driver(
             monkeypatch,

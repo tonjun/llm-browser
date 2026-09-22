@@ -873,6 +873,59 @@ return {
 };
 """)
 
+# XenForo forums (hardwarezone.com.sg's forums among others) live on
+# arbitrary hostnames like Discourse, so this is also detected from the
+# page's own markup (`<html id="XF">`) and tried on every otherwise-generic
+# page. Threads are paginated across separate URLs (`/threads/x.123/page-2`,
+# each rendering only that page's ~20 posts) rather than one infinite-scroll
+# page, so - same as Discourse - the first post *in the DOM* is treated as
+# "the" post and the rest as its replies; on page 1 that is genuinely the
+# thread starter's post, on page 2+ it is just that page's first post (a
+# `.p-description` byline naming the actual thread starter is present on
+# every page, but matching posts to it by author name isn't safe - the
+# starter may post again later in the thread, which would wrongly relabel
+# that later reply as the opening post). XenForo has no reply nesting, so
+# posts come back flat like Discourse's. A reply quoting an earlier post
+# repeats that post's text in a `blockquote.bbCodeBlock--quote`, which is
+# stripped so it isn't duplicated.
+_XENFORO_JS = _script(r"""
+if (document.documentElement.id !== 'XF') return null;
+const titleEl = document.querySelector('h1.p-title-value');
+if (!titleEl) return null;
+const QUOTE = 'blockquote.bbCodeBlock--quote';
+const parsePost = article => {
+  const name = article.getAttribute('data-author');
+  const link = article.querySelector('.message-name a');
+  const time = article.querySelector('.message-attribution-main time[datetime]');
+  const permalink = time ? time.closest('a') : null;
+  const body = article.querySelector('.message-body .bbWrapper');
+  const media = [];
+  if (body) body.querySelectorAll('img').forEach(img => {
+    if (img.closest(QUOTE) || img.classList.contains('smilie')) return;
+    const src = img.getAttribute('data-url') || img.currentSrc || img.src;
+    if (src && /^https?:/.test(src)) media.push({type: 'image', url: src, alt: img.alt || null});
+  });
+  return {
+    author: person(name, null, link ? link.href : null),
+    published: attr(time, 'datetime'),
+    content: body ? ownText(body, QUOTE) : null,
+    url: permalink ? permalink.href : null,
+    media,
+  };
+};
+const posts = Array.from(document.querySelectorAll('article.message--post')).map(parsePost);
+if (!posts.length) return null;
+const main = posts[0];
+return {
+  title: txt(titleEl),
+  author: main.author,
+  published: main.published,
+  content: main.content,
+  media: main.media,
+  comments: posts.slice(1).map(p => ({depth: 0, ...p})),
+};
+""")
+
 # Stomp (stomp.sg) articles: JSON-LD has no body, so the text is read from
 # the paragraphs following the masthead (skipping the ad / promo / embed
 # <div>s interleaved between them). Reader comments are a cross-origin
@@ -936,6 +989,13 @@ _ADAPTERS: dict[str, tuple[str, str]] = {
     "quora": ("quora", _QUORA_JS),
     "stomp": ("stomp", _STOMP_JS),
 }
+
+# (platform, extractor) tried in order on a host not in _HOSTS, since these
+# are detected from the page's own markup rather than its hostname.
+_CONTENT_DETECTED: list[tuple[str, str]] = [
+    ("discourse", _DISCOURSE_JS),
+    ("xenforo", _XENFORO_JS),
+]
 
 # Hostname (after stripping www./m./mobile./web.) -> adapter key.
 _HOSTS: dict[str, str] = {
@@ -1148,10 +1208,14 @@ def _read_page(d: CDPMethods) -> tuple[str, str, dict[str, Any], dict[str, Any] 
     platform, adapter_js = _adapter_for(url)
     generic = _as_obj(d.evaluate(_GENERIC_JS)) or {}
     if adapter_js is None:
-        # Unknown host: it may still be a Discourse forum.
-        adapter = _as_obj(d.evaluate(_DISCOURSE_JS))
-        if adapter is not None:
-            platform = "discourse"
+        # Unknown host: it may still be a forum platform detected from its
+        # own markup (Discourse, XenForo) rather than its hostname.
+        adapter = None
+        for detected_platform, detector_js in _CONTENT_DETECTED:
+            adapter = _as_obj(d.evaluate(detector_js))
+            if adapter is not None:
+                platform = detected_platform
+                break
     else:
         adapter = _as_obj(d.evaluate(adapter_js))
     return url, platform, generic, adapter
