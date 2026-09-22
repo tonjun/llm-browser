@@ -1,77 +1,93 @@
 # llm-browser
 
+[![CI](https://github.com/tonjun/llm-browser/actions/workflows/ci.yml/badge.svg)](https://github.com/tonjun/llm-browser/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 [![uv](https://img.shields.io/badge/managed%20with-uv-de5fe9.svg)](https://astral.sh)
 
-A Python CLI for browser automation that drives a real Chrome browser
-in stealth mode - undetected by anti-bot and captcha systems - and
-exposes it as a small set of plain commands: navigate, snapshot the
-page as an accessibility tree with stable `@eN` refs, then act on
-those refs (click, fill, get text, ...). Built for driving from an LLM
-agent, but works fine as a regular scripted CLI too.
+**A stealth browser CLI for LLM agents.** Drive a real Chrome that anti-bot and
+captcha systems don't flag, through a handful of plain shell commands: navigate,
+snapshot the page as an accessibility tree with stable `@eN` refs, then act on
+those refs (click, fill, get text, ...). Built for an agent to call from a
+shell, but just as usable as a scripted CLI.
+
+```console
+$ llm-browser open https://news.ycombinator.com
+$ llm-browser snapshot -i
+- link "Hacker News" [ref=e1]
+- link "new" [ref=e2]
+...
+$ llm-browser click @e2
+$ llm-browser extract          # main content of the page, as Markdown
+$ llm-browser close
+```
 
 ## Contents
 
+- [Why llm-browser](#why-llm-browser)
 - [Install](#install)
-- [Requirements](#requirements)
-- [Built on](#built-on)
-- [The core loop](#the-core-loop)
-- [Usage](#usage)
+- [Quick start](#quick-start)
+- [What it can do](#what-it-can-do)
 - [Deep research (search + scraping)](#deep-research-search--scraping)
-- [Claude Code skill](#claude-code-skill)
-- [Project layout](#project-layout)
+- [Use it from an agent (Claude Code and others)](#use-it-from-an-agent-claude-code-and-others)
+- [Files and privacy](#files-and-privacy)
+- [Troubleshooting](#troubleshooting)
+- [Responsible use](#responsible-use)
 - [Contributing](#contributing)
 - [License](#license)
 
+## Why llm-browser
+
+- **Shell-first.** No server, SDK or protocol to wire up. If your agent can run
+  a command, it can browse.
+- **Refs instead of selectors.** `snapshot -i` returns a compact list of
+  interactive elements tagged `@e1`, `@e2`, ...; every other command accepts
+  those refs (or a plain CSS selector). Far less to read than raw HTML.
+- **Stealth by default.** Runs a real Chrome that anti-bot systems don't flag,
+  and can detect and click through supported captchas.
+- **Persistent session.** The first `open` starts a background Chrome; later
+  commands reuse it, so logins, cookies and tabs carry across commands.
+- **Research helpers built in.** Search engines and sites (Google, Reddit, X,
+  Hacker News, GitHub, ...), readability-style extraction, structured post and
+  comment JSON, infinite-scroll pagination.
+
+It is deliberately smaller than a general test framework such as Playwright; see
+[`commands.md`](src/llm_browser/skills/llm-browser/docs/commands.md#not-supported-yet)
+for what is intentionally left out.
+
 ## Install
 
-**Standalone CLI, no clone needed** — installs [`uv`](https://astral.sh) if
-it's not already on PATH, then installs `llm-browser` as a global tool:
+Requires **macOS or Linux**, **Python 3.11+**, and a local **Google Chrome**
+(other Chromium-based browsers may work but aren't tested). Windows is not
+supported. Sessions rely on POSIX `flock` and process groups.
+
+**Standalone CLI, no clone needed.** Installs [`uv`](https://astral.sh) if it
+isn't already on PATH, then installs `llm-browser` as a global tool:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tonjun/llm-browser/main/install.sh | sh
 ```
 
-**Already have `uv`?** Skip the script:
+**Already have `uv`?**
 
 ```bash
 uv tool install git+https://github.com/tonjun/llm-browser
 ```
 
-**Prefer `pip`/`pipx` over `uv`?** Works too, no `uv` CLI required:
+**Prefer `pipx` / `pip`?**
 
 ```bash
 pipx install git+https://github.com/tonjun/llm-browser
 # or: pip install --user git+https://github.com/tonjun/llm-browser
 ```
 
-Any of the above gets you a `llm-browser` binary on PATH — commands below
-assume that.
+Check it worked with `llm-browser --version`. To upgrade, re-run the same
+command with `uv tool install --force ...` (or `pipx install --force ...`).
 
-**Contributing to this repo?** Clone it and use the local dev loop instead,
-which keeps `uv run llm-browser ...` in sync with your working tree:
+Want to hack on it? See [Contributing](#contributing).
 
-```bash
-uv sync
-```
-
-## Requirements
-
-- Python 3.11+
-- A local install of Google Chrome (driven in CDP Mode; other
-  Chromium-based browsers may work but aren't tested)
-
-## Built on
-
-The stealth/undetected browsing and captcha-solving is
-[SeleniumBase](https://seleniumbase.io/)'s CDP Mode + UC Mode doing
-the heavy lifting - this CLI is a thin, LLM-friendly command layer on
-top of it. The command surface itself is modeled on `agent-browser`,
-a similar tool with the same `@eN`-ref snapshot model.
-
-## The core loop
+## Quick start
 
 ```bash
 llm-browser open https://example.com
@@ -79,35 +95,42 @@ llm-browser snapshot -i              # interactive elements only, with @eN refs
 llm-browser click @e1                # act on a ref from the snapshot
 llm-browser fill @e2 "hello@example.com"
 llm-browser get text @e3
-llm-browser close
+llm-browser close                    # always close when you're done
 ```
 
 (Running from a repo clone without installing? Prefix each command with
-`uv run` instead, e.g. `uv run llm-browser open https://example.com`.)
+`uv run`, e.g. `uv run llm-browser open https://example.com`.)
 
-The browser session is persistent: the first `open` starts a background
-Chrome instance and leaves it running, and later commands reuse it
-instead of launching a new one. Refs (`@e1`, `@e2`, ...) are assigned
-fresh on every `snapshot` call and go stale the moment the page
-navigates or re-renders - re-snapshot after any page-changing action.
-See [`src/llm_browser/skills/llm-browser/docs/snapshot-and-refs.md`](src/llm_browser/skills/llm-browser/docs/snapshot-and-refs.md) for the
-full ref-staleness model and its caveats.
+Useful flags: `open --headless` (no window) and `open --headed` (force a real
+window). They only apply to the `open` that starts the session; run `close`
+first to switch modes.
 
-See [`src/llm_browser/skills/llm-browser/docs/commands.md`](src/llm_browser/skills/llm-browser/docs/commands.md) for the full command
-reference (interaction, get/is, cookies/storage, tabs, captcha
-solving, and more), including what agent-browser supports that isn't
-implemented here and why.
+**Refs go stale.** `@e1`, `@e2`, ... are assigned fresh on every `snapshot` and
+stop working once the page navigates or re-renders. Re-snapshot after any
+page-changing action. Details in
+[`snapshot-and-refs.md`](src/llm_browser/skills/llm-browser/docs/snapshot-and-refs.md).
 
-## Usage
+**Sessions persist.** How the background daemon works, and how to run several
+isolated sessions with `LLM_BROWSER_HOME`, is in
+[`persistent-sessions.md`](src/llm_browser/skills/llm-browser/docs/persistent-sessions.md).
 
-```bash
-llm-browser open https://example.com
-llm-browser open https://example.com --headless
-llm-browser close
-```
+## What it can do
 
-See [`src/llm_browser/skills/llm-browser/docs/persistent-sessions.md`](src/llm_browser/skills/llm-browser/docs/persistent-sessions.md) for how
-the persistent daemon works and `llm-browser close` to shut it down.
+Run `llm-browser --help` (or `llm-browser <command> --help`) for everything.
+The full reference, with examples and the list of unsupported features, is
+[`commands.md`](src/llm_browser/skills/llm-browser/docs/commands.md).
+
+| Area | Commands |
+|---|---|
+| Navigate | `open`, `close`, `back`, `forward`, `reload` |
+| Read the page | `snapshot`, `get text/html/value/...`, `read`, `extract`, `post`, `is ...` |
+| Interact | `click`, `dblclick`, `fill`, `type`, `press`, `hover`, `check`, `select`, `drag`, `upload`, `scroll` |
+| Wait | `wait` (element, text, URL, timeout, JS condition) |
+| Search & scrape | `search`, `extract`, `save-markdown`, `read <url>`, `tab new --extract` |
+| Capture | `screenshot`, `pdf` |
+| State | `cookies`, `storage`, `tab`, `window`, `eval` |
+| Anti-bot | `click-captcha` / `solve-captcha`, `mfa-code`, `enter-mfa`, `gui-hover-click` |
+| Agents | `skills list/get/install` |
 
 ## Deep research (search + scraping)
 
@@ -122,87 +145,92 @@ llm-browser read https://example.com --markdown  # fetch a URL directly, no brow
 llm-browser scroll down --until-count 50 --selector ".item"  # infinite-scroll pagination
 ```
 
-For workflows that search engines and specific sites (Reddit, X/Twitter,
-Hacker News, GitHub, ...) and then extract structured data from the
-results, see [`src/llm_browser/skills/llm-browser/docs/deep-research.md`](src/llm_browser/skills/llm-browser/docs/deep-research.md) — recipes for
-site-scoped search, structured extraction, and handling pagination/infinite
-scroll.
+Recipes for site-scoped search, structured extraction and pagination are in
+[`deep-research.md`](src/llm_browser/skills/llm-browser/docs/deep-research.md).
 
-## Claude Code skill
+## Use it from an agent (Claude Code and others)
 
-[`src/llm_browser/skills/llm-browser/SKILL.md`](src/llm_browser/skills/llm-browser/SKILL.md) teaches
-Claude Code (or any compatible agent) how to drive this CLI correctly
-— the core loop, the persistent-session model, and the places this
-tool's command surface diverges from `agent-browser`, the CLI its
-commands are modeled on. It's already wired up via a committed symlink
-at `.claude/skills/llm-browser`, which is where Claude Code looks for
-project skills, so it loads automatically in this repo. If a clone
-loses the symlink (e.g. a zip download, or a filesystem without
-symlink support), recreate it with:
-
-```bash
-mkdir -p .claude/skills
-ln -s ../../src/llm_browser/skills/llm-browser .claude/skills/llm-browser
-```
-
-The skills ship inside the package, so an installed CLI can print them
-without a clone:
+The package bundles the `llm-browser` skill: how to drive the CLI correctly
+(the core loop and the session model). A
+second bundled skill, `search-results-extractor`, turns a search-results
+snapshot into title/URL/snippet lists; read it with
+`llm-browser skills get search-results-extractor`.
 
 ```bash
 llm-browser skills list                    # bundled skills + descriptions
-llm-browser skills get llm-browser --full  # SKILL.md plus its docs/*.md
+llm-browser skills get llm-browser --full  # SKILL.md plus its docs/*.md, as plain text
+llm-browser skills install                 # install llm-browser into ~/.claude/skills (Claude Code)
+llm-browser skills install --project       # ...or into ./.claude/skills
+llm-browser skills install --force         # overwrite / refresh after upgrading the CLI
 ```
 
-To make the `llm-browser` skill available to Claude Code outside a clone,
-install it into `~/.claude/skills` (or `./.claude/skills` with `--project`).
-The installed `SKILL.md` is the full version — the same text as
-`skills get llm-browser --full`, with every `docs/*.md` inlined:
+**Claude Code:** `skills install` is all you need; inside a clone of this repo
+the skill is already loaded through the committed symlink at
+`.claude/skills/llm-browser`.
 
-```bash
-llm-browser skills install                 # installs the llm-browser skill
-llm-browser skills install --force         # overwrite / update an existing install
-```
+**Any other agent** (Cursor, Codex, a custom loop, ...): the CLI is plain
+shell, so put the output of `llm-browser skills get llm-browser --full` in your
+agent's instructions or rules file and allow it to run `llm-browser`.
 
-Re-run with `--force` after upgrading the CLI to refresh the installed copy.
+The canonical text lives in
+[`src/llm_browser/skills/llm-browser/SKILL.md`](src/llm_browser/skills/llm-browser/SKILL.md);
+edit that when the command surface changes.
 
-Edit `src/llm_browser/skills/llm-browser/SKILL.md` itself when the command surface
-changes — that's the canonical, version-controlled copy.
+## Files and privacy
 
-## Project layout
+Everything lives under `~/.llm-browser/` (override with `LLM_BROWSER_HOME`):
 
-```
-src/llm_browser/
-├── cli.py          # Typer CLI entrypoint - builds the app + noun sub-apps
-│                   # (get, is, cookies, storage, tab, window) and wires up
-│                   # each commands/*.py module's register()
-├── commands/       # Typer command definitions (arg parsing), one module
-│                   # per topic, mirroring browser/ 1:1
-├── browser/        # SeleniumBase CDP Mode helpers, one module per topic:
-│   ├── core.py     #   daemon lifecycle + the attach-call-return pattern
-│   │               #   every command uses (with_driver, resolve_selector)
-│   ├── snapshot.py #   the accessibility-tree snapshot/@ref system
-│   └── ...         #   navigation, interaction, wait, info, state, capture,
-│                   #   evaluate, storage, tabs, misc, gui, captcha
-├── skills/         # Bundled Claude Code skills (SKILL.md + docs), shown by
-│                   # `llm-browser skills` and symlinked into .claude/skills/
-├── daemon.py       # Background process that owns the persistent Chrome instance
-└── session.py      # State-file helpers coordinating the CLI and the daemon
-```
+| Path | What it holds |
+|---|---|
+| `profile/` | The Chrome profile: **cookies, logins and local storage persist here** between sessions |
+| `screenshots/`, `pages/` | Default output of `screenshot` and `save-markdown` (they are not cleaned up automatically) |
+| `daemon.log` | Output of the background browser, for debugging |
+| `session.json`, `*.lock` | Bookkeeping for the running session |
+
+Treat it like a browser profile. To wipe everything: `llm-browser close`, then
+`rm -rf ~/.llm-browser`. While a session is running, Chrome's DevTools port is
+open on the local machine; see [SECURITY.md](SECURITY.md).
+
+## Troubleshooting
+
+| Symptom | Try |
+|---|---|
+| `No running session` error, or a command hangs on a stale session | `llm-browser close`, then `open` again |
+| Chrome won't start | Make sure Google Chrome is installed; read the tail of `~/.llm-browser/daemon.log` |
+| Chrome profile locked / `SingletonLock` errors | `llm-browser close` (kills any orphaned Chrome), or use a fresh `LLM_BROWSER_HOME` |
+| `error: ...` with no detail | Re-run with `LLM_BROWSER_DEBUG=1` for the full traceback |
+| `--headless` / `--headed` seemingly ignored | They only apply to the `open` that starts the session; `close` first |
+| A `@eN` ref "doesn't resolve" | Refs are per-snapshot; run `snapshot` again |
+| Linux server, no display | Default runs Chrome inside an invisible Xvfb display; pass `--headless` if that fails |
+| Still stuck | [Open an issue](https://github.com/tonjun/llm-browser/issues/new/choose) with your OS, Chrome version and the commands you ran |
+
+## Responsible use
+
+llm-browser is a general-purpose automation tool, and its stealth and captcha
+features exist so agents can do legitimate work (research, testing, accessibility
+checks, your own accounts) on sites that block naive bots. Use it only on
+sites and accounts you are authorized to access, respect each site's terms of
+service, `robots.txt` and applicable laws, and rate-limit your requests. You are
+responsible for how you use it. The software is provided as is, without warranty
+(see [LICENSE](LICENSE)).
 
 ## Contributing
 
-Contributions are welcome. After `uv sync` (see [Install](#install)):
+Contributions are welcome. After cloning:
 
 ```bash
-make test    # run the test suite (pytest)
+uv sync
+make test    # run the test suite (pytest, no Chrome needed)
 make lint    # ruff check
 make format  # ruff format
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, including
-where tests and commands each live and what a good PR looks like.
-Please open an issue first for anything beyond a small fix.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide: where code and tests
+live, how to add a command, commit style and the PR checklist. Please open an
+issue first for anything beyond a small fix. This project follows the
+[Code of Conduct](CODE_OF_CONDUCT.md). Release notes are in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Built on [SeleniumBase](https://seleniumbase.io/).

@@ -1,0 +1,39 @@
+name: Bug report
+description: Something doesn't work as documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: llm-browser version
+      description: Output of `llm-browser --version`
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS and Chrome version
+      placeholder: macOS 15, Chrome 140 / Ubuntu 24.04, Chrome 140
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Commands you ran
+      description: A URL and the exact commands, in order. Add `--headed` runs separately if it only fails headed.
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened vs. what you expected
+      description: Set `LLM_BROWSER_DEBUG=1` to get a full traceback.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Daemon log (optional)
+      description: Tail of `~/.llm-browser/daemon.log`. Remove anything private first.
+      render: text
