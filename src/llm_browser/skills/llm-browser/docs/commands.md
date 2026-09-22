@@ -293,7 +293,7 @@ plain text if `trafilatura` finds no main-content region.
 (it never navigates):
 
 ```json
-{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|threads|quora|stomp|facebook|instagram|discourse|generic",
+{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|threads|quora|stomp|facebook|instagram|discourse|xenforo|generic",
  "title": "...", "author": {"name": "...", "handle": "...", "url": "..."},
  "published": "ISO-8601 (or the site's raw date text)", "content": "post body",
  "score": 123, "comment_count": 45,
@@ -308,10 +308,12 @@ have no `title`). Extraction is layered: a generic pass (JSON-LD
 OpenGraph/meta tags, then microdata and DOM heuristics for comment blocks)
 runs on every page, and a per-site adapter overrides it for `reddit.com`
 (old and new UI), `x.com`/`twitter.com`, `news.ycombinator.com`,
-`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `stomp.sg`, `threads.com`/`threads.net` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse forums (detected from
-`<meta name="generator">`, so any hostname). `comments` are nested via
-`replies`, except on X (replies are flat) and Discourse (posts are a flat
-chronological list). `--max-comments` truncates in document order, so a
+`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `stomp.sg`, `threads.com`/`threads.net` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse and XenForo
+forums (each detected from the page's own markup, so any hostname - this is
+how `forums.hardwarezone.com.sg` is supported, with no host-specific code).
+`comments` are nested via
+`replies`, except on X (replies are flat), and Discourse and XenForo (posts
+are a flat list). `--max-comments` truncates in document order, so a
 reply is never returned without its parent; `comment_count` is the page's own
 total when it reports one, otherwise the number extracted. LinkedIn shows only relative ages ("1yr"), so
 `published` is decoded from the post/comment id (Snowflake timestamp); it has
@@ -346,7 +348,16 @@ starts. A Stomp article's body is read from the
 page and its comments (a cross-origin Disqus iframe) are fetched from the
 Disqus embed, so they are returned nested without scrolling (`comment_count`
 is Disqus's total; `published` is UTC). Only comments
-present in the DOM are returned - scroll / click "load more" first. Facebook
+present in the DOM are returned - scroll / click "load more" first. A XenForo
+forum thread (e.g. `forums.hardwarezone.com.sg`) is paginated across separate
+URLs (`/threads/x.123/page-2`, ~20 posts each) rather than one scrolling
+page, so `post` treats whichever post is first in the DOM on the page
+currently open as "the" post and the rest as its replies - on page 1 that is
+genuinely the thread starter, on page 2+ it is just that page's first post
+(`comment_count` is only what's on the fetched page, not the thread's
+overall total); fetch each page and run `post` again for more. A quoted
+earlier post inside a reply is stripped so its text isn't duplicated.
+Facebook
 and Instagram are best-effort (obfuscated markup, login-walled) and X needs a
 session for replies; when nothing is found `post` waits ~10s, then warns on
 stderr and returns the null-filled object.
