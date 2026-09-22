@@ -9,12 +9,18 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
-import fcntl
 import json
 import os
 import socket
 import threading
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # Windows has no fcntl; the daemon model relies on flock.
+    raise SystemExit(
+        "error: llm-browser supports macOS and Linux only; Windows is not supported."
+    ) from None
 
 # Override the state directory (session files *and* the Chrome profile)
 # to run several fully isolated sessions on one machine - e.g. one per

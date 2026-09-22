@@ -9,12 +9,41 @@ authors = [
     { name = "Antonio Banaag II", email = "tonjun@gmail.com" }
 ]
 requires-python = ">=3.11"
+keywords = [
+    "browser-automation",
+    "llm",
+    "ai-agents",
+    "cli",
+    "seleniumbase",
+    "stealth",
+    "web-scraping",
+    "claude-code",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "requests>=2.32",
     "seleniumbase>=4.52.4",
     "trafilatura>=1.12",
     "typer>=0.27.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/tonjun/llm-browser"
+Repository = "https://github.com/tonjun/llm-browser"
+Issues = "https://github.com/tonjun/llm-browser/issues"
+Changelog = "https://github.com/tonjun/llm-browser/blob/main/CHANGELOG.md"
 
 [project.scripts]
 llm-browser = "llm_browser.cli:run"

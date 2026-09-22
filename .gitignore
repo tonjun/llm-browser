@@ -17,5 +17,6 @@ archived_logs/
 .DS_Store
 
 tmp/
-.claude
-1.sh
+# Local Claude Code state; the bundled skill symlink is committed
+.claude/*
+!.claude/skills/

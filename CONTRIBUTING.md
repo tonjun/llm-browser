@@ -6,7 +6,11 @@ it tested.
 
 ## Getting set up
 
-Clone the repo and sync dependencies with [`uv`](https://astral.sh):
+You need Python 3.11+ (see `.python-version`) and [`uv`](https://astral.sh). Chrome is only
+needed if you want to try the CLI against a real browser; the test suite is fully mocked and
+runs in about ten seconds without it. macOS and Linux only.
+
+Clone the repo and sync dependencies:
 
 ```bash
 git clone https://github.com/tonjun/llm-browser
@@ -25,7 +29,10 @@ make lint    # ruff check
 make format  # ruff format
 ```
 
-Run `make lint` and `make test` before opening a PR — both are quick.
+Run `make lint` and `make test` before opening a PR — both are quick. CI runs the same two
+commands on Linux and macOS.
+
+Please be kind: this project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Where things live
 
@@ -42,8 +49,7 @@ Run `make lint` and `make test` before opening a PR — both are quick.
 - `tests/` mirrors `src/llm_browser/` the same way — a new
   `browser/foo.py` should come with `tests/browser/test_foo.py`.
 
-See the [Project layout](README.md#project-layout) section of the
-README for more detail, and
+See
 [`src/llm_browser/skills/llm-browser/docs/`](src/llm_browser/skills/llm-browser/docs/) for how the CLI
 is meant to be driven (persistent sessions, snapshot/ref model, deep
 research recipes).
@@ -59,10 +65,19 @@ research recipes).
    canonical, version-controlled copy Claude Code loads as a project
    skill.
 
+## Commits and pull requests
+
+- Branch from `main`; keep each PR focused on one change.
+- Commit messages are short and imperative, optionally starting with a gitmoji
+  (`✨ Add support for ...`, `🐛 Fix ...`, `🧹 ...`); PRs are squash-merged with the PR number appended.
+- Add a line under "Unreleased" in [CHANGELOG.md](CHANGELOG.md) for anything user-visible.
+- The [PR template](.github/PULL_REQUEST_TEMPLATE.md) has the checklist.
+
 ## Reporting bugs / requesting features
 
 Open a GitHub issue with repro steps (a URL and the commands you ran,
-where possible). For anything beyond a small fix, please open an issue
+where possible); the issue templates ask for the details we need. Report security problems privately, see
+[SECURITY.md](SECURITY.md). For anything beyond a small fix, please open an issue
 first to discuss the approach before sending a PR.
 
 ## Code style
