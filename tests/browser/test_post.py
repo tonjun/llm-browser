@@ -71,6 +71,8 @@ class TestAdapterFor:
                 "stomp",
                 "article-headline",
             ),
+            ("https://forum.lowyat.net/topic/4985872", "lowyat", "post_table"),
+            ("https://forum.lowyat.net/topic/4985872/+20", "lowyat", "reactionsBar"),
             (
                 "https://www.linkedin.com/posts/u_x-activity-7326818689821954048-wZ2W/",
                 "linkedin",
@@ -93,6 +95,7 @@ class TestAdapterFor:
         assert post._adapter_for("https://notg2.com/")[0] == "generic"
         assert post._adapter_for("https://notthreads.com/")[0] == "generic"
         assert post._adapter_for("https://notstomp.sg/")[0] == "generic"
+        assert post._adapter_for("https://lowyat.net/")[0] == "generic"
 
 
 class TestDisqusComments:
@@ -586,6 +589,41 @@ class TestExtractPost:
             post, "_disqus_comments", lambda *a: pytest.fail("fetched Disqus")
         )
         assert _run(include_comments=False)["comments"] == []
+
+    def test_lowyat_topic_keeps_json_ld_reply_count(self, monkeypatch):
+        """Lowyat's adapter reads every post from the DOM (first = the post,
+        rest = flat replies); page 1's JSON-LD reply total still fills
+        comment_count, which the adapter leaves unset."""
+        _driver(
+            monkeypatch,
+            "https://forum.lowyat.net/topic/4985872",
+            generic={
+                "title": "Perodua Bezza owner come in please",
+                "content": "As per title what is the pros and cons",
+                "published": "2020-06-25T07:57:18+00:00",
+                "comment_count": 26,
+            },
+            adapter={
+                "title": "Perodua Bezza owner come in please",
+                "author": {"name": "acepilot12", "url": "/user/acepilot12"},
+                "published": "2020-06-25T15:57:00+08:00",
+                "content": "As per title\n\nwhat is the pros and cons",
+                "score": 0,
+                "media": [],
+                "comments": [
+                    {"depth": 0, "author": {"name": "ajax91"}, "content": "a"},
+                    {"depth": 0, "author": {"name": "reed90"}, "content": "b"},
+                ],
+            },
+        )
+        result = _run()
+        assert result["platform"] == "lowyat"
+        assert result["author"]["url"] == "https://forum.lowyat.net/user/acepilot12"
+        assert result["published"] == "2020-06-25T15:57:00+08:00"
+        assert result["content"] == "As per title\n\nwhat is the pros and cons"
+        assert result["comment_count"] == 26
+        assert [c["content"] for c in result["comments"]] == ["a", "b"]
+        assert all(c["replies"] == [] for c in result["comments"])
 
     def test_rereads_while_adapter_reports_pending(self, monkeypatch):
         """Quora's adapter clicks "(more)" and reports pending=True; the next

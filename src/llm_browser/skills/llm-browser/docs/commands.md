@@ -293,7 +293,7 @@ plain text if `trafilatura` finds no main-content region.
 (it never navigates):
 
 ```json
-{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|threads|quora|stomp|facebook|instagram|discourse|xenforo|generic",
+{"url": "...", "platform": "reddit|x|hackernews|linkedin|trustpilot|g2|threads|quora|stomp|lowyat|facebook|instagram|discourse|xenforo|generic",
  "title": "...", "author": {"name": "...", "handle": "...", "url": "..."},
  "published": "ISO-8601 (or the site's raw date text)", "content": "post body",
  "score": 123, "comment_count": 45,
@@ -308,11 +308,11 @@ have no `title`). Extraction is layered: a generic pass (JSON-LD
 OpenGraph/meta tags, then microdata and DOM heuristics for comment blocks)
 runs on every page, and a per-site adapter overrides it for `reddit.com`
 (old and new UI), `x.com`/`twitter.com`, `news.ycombinator.com`,
-`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `stomp.sg`, `threads.com`/`threads.net` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse and XenForo
+`linkedin.com` (needs a logged-in session), `trustpilot.com`, `g2.com` and `quora.com` (any subdomain), `stomp.sg`, `forum.lowyat.net`, `threads.com`/`threads.net` (needs a logged-in session), `facebook.com`, `instagram.com`, and Discourse and XenForo
 forums (each detected from the page's own markup, so any hostname - this is
 how `forums.hardwarezone.com.sg` is supported, with no host-specific code).
 `comments` are nested via
-`replies`, except on X (replies are flat), and Discourse and XenForo (posts
+`replies`, except on X (replies are flat), and Discourse, XenForo and Lowyat (posts
 are a flat list). `--max-comments` truncates in document order, so a
 reply is never returned without its parent; `comment_count` is the page's own
 total when it reports one, otherwise the number extracted. LinkedIn shows only relative ages ("1yr"), so
@@ -357,6 +357,12 @@ genuinely the thread starter, on page 2+ it is just that page's first post
 (`comment_count` is only what's on the fetched page, not the thread's
 overall total); fetch each page and run `post` again for more. A quoted
 earlier post inside a reply is stripped so its text isn't duplicated.
+Lowyat topics (`forum.lowyat.net/topic/<id>`) work the same way: pages are
+`/topic/<id>/+20`, `/+40`, ... (20 posts each), the first post in the DOM is
+"the" post, quotes are stripped, `score` is the post's like count, and
+`published` is converted from the board's GMT+8 display time ("Jun 25 2020,
+03:57 PM", "Yesterday, ...", "Today, ...") to ISO with a `+08:00` offset.
+On page 1 `comment_count` is the topic's total reply count.
 Facebook
 and Instagram are best-effort (obfuscated markup, login-walled) and X needs a
 session for replies; when nothing is found `post` waits ~10s, then warns on

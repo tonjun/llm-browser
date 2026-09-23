@@ -974,6 +974,76 @@ return {
 };
 """)
 
+# Lowyat (forum.lowyat.net) runs a customised Invision Power Board 1.x: every
+# post is a `table.post_table`. Topics are paginated across separate URLs
+# (`/topic/<id>/+20`, 20 posts each) and only page 1 carries JSON-LD, so -
+# same as XenForo - the first post in the DOM is "the" post and the rest are
+# its replies (flat: IPB has no reply nesting). Dates are shown in board time
+# (GMT+8 for guests, confirmed against page 1's JSON-LD) as "Jun 25 2020,
+# 03:57 PM", "Yesterday, 05:33 PM" or "Today, 07:40 AM", and are converted to
+# ISO with a +08:00 offset. Quoted posts (`.quotetop`/`.quotemain`), the
+# "edited by" footer and spoiler toggles are stripped from the text. `score`
+# is the like count from the "A, B, and 99 others liked this post" bar.
+_LOWYAT_JS = _script(r"""
+const posts = Array.from(document.querySelectorAll('table.post_table'));
+if (!posts.length) return null;
+const pad = n => String(n).padStart(2, '0');
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const stamp = s => {
+  const t = (s || '').split(', updated')[0].trim();
+  let y, mo, d, rest;
+  const abs_ = t.match(/^(\w{3}) (\d{1,2}) (\d{4}), (.+)$/);
+  const rel = t.match(/^(Today|Yesterday), (.+)$/);
+  if (abs_ && MONTHS.includes(abs_[1])) {
+    [y, mo, d, rest] = [+abs_[3], MONTHS.indexOf(abs_[1]) + 1, +abs_[2], abs_[4]];
+  } else if (rel) {
+    const now = new Date(Date.now() + 8 * 3600e3 - (rel[1] === 'Yesterday' ? 86400e3 : 0));
+    [y, mo, d, rest] = [now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate(), rel[2]];
+  } else {
+    return t || null;
+  }
+  const hm = rest.match(/^(\d{1,2}):(\d{2}) ([AP]M)$/);
+  if (!hm) return t;
+  const h = (+hm[1] % 12) + (hm[3] === 'PM' ? 12 : 0);
+  return `${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${hm[2]}:00+08:00`;
+};
+const likes = bar => {
+  if (!bar) return 0;
+  const others = txt(bar).match(/(\d[\d,]*) others?/);
+  return bar.querySelectorAll('a').length + (others ? Number(others[1].replace(/,/g, '')) : 0);
+};
+const STRIP = '.quotetop, .quotemain, span.edit, .spoilertop';
+const parsed = posts.map(t => {
+  const id = t.id.replace(/^post_/, '');
+  const a = t.querySelector('.normalname a');
+  const body = t.querySelector('.post_text');
+  const media = [];
+  if (body) body.querySelectorAll('img').forEach(i => {
+    if (i.closest('.quotemain') || /\/style_(emoticons|images)\//.test(i.src)) return;
+    if (/^https?:/.test(i.src)) media.push({type: 'image', url: i.src, alt: /^user posted image$/i.test(i.alt) ? null : i.alt || null});
+  });
+  return {
+    author: person(a ? txt(a) : null, null, a ? a.href : null),
+    published: stamp(txt(t.querySelector('.postdetails'))),
+    content: body ? ownText(body, STRIP) : null,
+    score: likes(t.querySelector('.reactionsBar')),
+    url: /^\d+$/.test(id) ? location.origin + '/index.php?act=findpost&pid=' + id : null,
+    media,
+  };
+});
+const title = document.querySelector('.maintitle p b');
+const main = parsed[0];
+return {
+  title: title ? txt(title) : null,
+  author: main.author,
+  published: main.published,
+  content: main.content,
+  score: main.score,
+  media: main.media,
+  comments: parsed.slice(1).map(p => ({depth: 0, ...p})),
+};
+""")
+
 # adapter key -> (platform, extractor)
 _ADAPTERS: dict[str, tuple[str, str]] = {
     "old_reddit": ("reddit", _OLD_REDDIT_JS),
@@ -988,6 +1058,7 @@ _ADAPTERS: dict[str, tuple[str, str]] = {
     "threads": ("threads", _THREADS_JS),
     "quora": ("quora", _QUORA_JS),
     "stomp": ("stomp", _STOMP_JS),
+    "lowyat": ("lowyat", _LOWYAT_JS),
 }
 
 # (platform, extractor) tried in order on a host not in _HOSTS, since these
@@ -1015,6 +1086,7 @@ _HOSTS: dict[str, str] = {
     "threads.net": "threads",
     "quora.com": "quora",
     "stomp.sg": "stomp",
+    "forum.lowyat.net": "lowyat",
 }
 
 # Sites served from per-country subdomains (nz.trustpilot.com, ...).

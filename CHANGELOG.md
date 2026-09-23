@@ -7,6 +7,10 @@ change the command surface).
 
 ## [Unreleased]
 
+### Fixed
+- `post` on forum.lowyat.net topics now returns the replies (flat, with like counts,
+  quotes stripped and dates as ISO `+08:00`) instead of only the opening post.
+
 ### Added
 - Community files: `CHANGELOG.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and
   pull-request templates, and a CI workflow (lint + tests on Linux and macOS).
